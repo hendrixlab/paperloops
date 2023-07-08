@@ -202,9 +202,13 @@ void read_pdb_file(char* file_name) {
   fclose(F);
 
   // this is some example code to confirm that the data is stored properly
-  struct rna* my_RNA = models[7];
-  struct nuc* my_nuc = get_nuc_by_num(my_RNA,7);
-  struct atom* my_atom = get_atom_by_num(my_nuc,200);
+  struct rna* my_RNA = models[0];
+  struct nuc* my_nuc = get_nuc_by_num(my_RNA,1);
+  struct atom* my_atom = get_atom_by_num(my_nuc,7);
   printf("nuc num: %d nuc name: %s\n",get_nuc_num(my_nuc),get_nuc_name(my_nuc));
   printf("atom num: %d atom name: %s\n",get_atom_num(my_atom),get_atom_name(my_atom));
+
+  // print the RNA sequence:
+  char* sequence = get_rna_sequence(my_RNA);
+  printf("%s\n",sequence);
 }

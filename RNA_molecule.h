@@ -39,5 +39,6 @@ int get_nuc_num(struct nuc* n);
 char* get_nuc_name(struct nuc* n);
 int get_atom_num(struct atom* a);
 char* get_atom_name(struct atom* a);
+char* get_rna_sequence(struct rna* RNA);
 
 #endif

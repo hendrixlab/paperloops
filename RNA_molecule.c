@@ -10,19 +10,20 @@
 #include "RNA_molecule.h"
 
 /*
- * This is the definition of the RNA linked list structure.  
+ *  Data Structure Definitions 
+ *  includes nodes for linked lists describing:
+ *     -sequence of nucleotides (linked list of "nuc" nodes   
+ *     -collection of atoms
  */
 
 struct rna {
   struct nuc* first;
   struct nuc* last;
   int length;
+  char* seq;
 };
 
-/*
- * This is the definition of the "nuc" node for the linked list.
- */
-
+// nucleotide node
 struct nuc {
   struct atom* first;
   struct atom* last;
@@ -32,10 +33,7 @@ struct nuc {
   struct nuc* next;
 };
 
-/*
- * This is the definition of the "atom" node for each nucleotide "nuc"
- */
-
+// atom node
 struct atom {
   char* name;
   double* r;
@@ -43,7 +41,9 @@ struct atom {
   struct atom* next;
 };
 
-/* creation subroutines */
+/* 
+ * Node creation subroutines 
+ */
 
 struct rna* create_rna() {
   struct rna* RNA = malloc(sizeof(struct rna));
@@ -78,7 +78,9 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
   return a;
 }
 
-/* free memory subroutines */
+/* 
+ * Memory management/freeing subroutines 
+ */
 
 void free_rna(struct rna* RNA) {
   assert(RNA);
@@ -118,7 +120,9 @@ int nuc_is_empty(struct nuc* n) {
   return n->first == NULL;
 }
 
-/* adding elements to the data structure */
+/* 
+ * Subroutines to add elements to the data structure 
+ */
 
 void add_nuc(struct rna* RNA, struct nuc* n) {
   if(RNA->first != NULL) {
@@ -152,7 +156,9 @@ void add_atom(struct rna* RNA, struct atom* a) {
   RNA->last->size++;
 }
 
-/* functions to access elements from RNA data structure */
+/* 
+ * Functions to access elements from RNA data structure 
+ */
 
 // this function checks if the last nucleotide in RNA has the number "nuc_num"
 // used to avoid adding a nucleotide more than once 
@@ -219,4 +225,25 @@ int get_atom_num(struct atom* a) {
 char* get_atom_name(struct atom* a) {
   assert(a);
   return a->name;
+}
+
+
+// Extract the RNA sequence
+
+char* get_rna_sequence(struct rna* RNA) {
+  assert(RNA);
+  char* sequence; 
+  if(RNA->length != 0) {
+    sequence = malloc(sizeof(char) * RNA->length);
+    struct nuc* n = RNA->first;
+    strcpy(sequence,"");
+    while(n != NULL) {
+      strcat(sequence,n->name);
+      n = n->next;
+    }
+  } else {
+    printf("Error: RNA has length zero.\n");
+    exit(0);
+  }
+  return sequence;
 }
