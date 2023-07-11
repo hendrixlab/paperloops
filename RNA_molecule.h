@@ -1,6 +1,8 @@
 /*
- * This file contains the definition of an interface for a linked list structure
- * of nucleotide nodes, each with a linked list of atom nodes. .
+ * This library contains the definitions of structures and functions for implementing
+ * the RNA data structure
+ *
+ * author: David Hendrix david.hendrix@oregonstate.edu
  */
 
 #ifndef _RNA_MOLECULE
@@ -33,7 +35,11 @@ void add_backbone_atom(struct rna* RNA, struct atom* a);
 void add_sugar_atom(struct rna* RNA, struct atom* a);
 void add_base_atom(struct rna* RNA, struct atom* a);
 int last_nuc_has_num(struct rna* RNA, int nuc_num);
+struct nuc* get_first_nuc(struct rna* RNA);
 struct nuc* get_nuc_by_num(struct rna* RNA, int nuc_num);
+struct nuc* next_nuc(struct nuc* n);
+struct atom* get_first_backbone_atom(struct nuc* n);
+struct atom* next_atom(struct atom* a);
 struct atom* get_atom_by_num(struct nuc* n, int atom_num);
 int get_nuc_num(struct nuc* n);
 char* get_nuc_name(struct nuc* n);

@@ -1,6 +1,8 @@
 /*
- * This file contains the definitions of structures and functions implementing
- * for the RNA data structure
+ * This library contains the definitions of structures and functions for implementing
+ * the RNA data structure
+ *
+ * author: David Hendrix david.hendrix@oregonstate.edu
  */
 
 #include <stdio.h>
@@ -13,7 +15,10 @@
  *  Data Structure Definitions 
  *  includes nodes for linked lists describing:
  *     -sequence of nucleotides (linked list of "nuc" nodes   
- *     -collection of atoms
+ *     -collection of atoms. There are three linked lists of atoms:
+ *         -backbone atoms
+ *         -sugar atoms
+ *         -base atoms
  */
 
 struct rna {
@@ -34,6 +39,8 @@ struct nuc {
   int num;
   char* name;
   int size;
+  double* bbta[6]; // backbone torsion angles
+  double* sta[5];  // sugar torsion angles 
   struct nuc* next;
 };
 
@@ -73,6 +80,7 @@ struct nuc* create_nuc(int nuc_num, char* nuc_name) {
   strcpy(name_string,nuc_name);
   n->name = name_string;
   n->size = 0;
+  n->next = NULL;
   return n;
 }
 
@@ -84,6 +92,7 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
   char* name_string = malloc(sizeof(char) * (strlen(atom_name) + 1));
   strcpy(name_string,atom_name);
   a->name = name_string;
+  a->next = NULL;
   return a;
 }
 
@@ -152,14 +161,14 @@ int nuc_base_is_empty(struct nuc* n) {
  */
 
 void add_nuc(struct rna* RNA, struct nuc* n) {
-  if(RNA->first_nuc != NULL) {
+  if(RNA->first_nuc != NULL) { // if not the first nuc
     RNA->last_nuc->next = n;
     RNA->last_nuc = n;
-  } else {
+  } else {  // the first (and currently last) nuc in the RNA chain
     RNA->first_nuc = n;
     RNA->last_nuc = n;
   }
-  RNA->length++;    
+  RNA->length++;
 }
 
 void add_atom(struct rna* RNA, struct atom* a) {
@@ -284,6 +293,17 @@ int last_nuc_has_num(struct rna* RNA, int nuc_num) {
   }
 }
 
+// returns a pointer to the first nucleotide (nuc) in an RNA 
+struct nuc* get_first_nuc(struct rna* RNA) {
+  assert(RNA);
+  if(RNA->first_nuc) {
+    struct nuc* n = RNA->first_nuc;
+    return n;
+  }
+  printf("Error: No nuc found for the RNA\n");
+  exit(1);
+}
+
 // returns a pointer to a nuc by searching for the serial number "nuc_num"
 struct nuc* get_nuc_by_num(struct rna* RNA, int nuc_num) {
   assert(RNA);
@@ -298,6 +318,42 @@ struct nuc* get_nuc_by_num(struct rna* RNA, int nuc_num) {
   }
   printf("No nuc found with number %d\n",nuc_num);
   exit(1);
+}
+
+//given a nuc return the next nuc in the RNA sequence
+struct nuc* next_nuc(struct nuc* n) {
+  assert(n);
+  return n->next;
+}
+
+// returns a pointer to the previous backbone atom O3' relative to n
+struct atom* get_prev_backbone_atom(struct nuc* n) {
+  assert(n);
+  if(n->backbone_first) {
+    struct atom* a = n->backbone_first;
+    return a;    
+  } else {
+    printf("Error: No backbone atom found.\n");
+  }
+}
+
+
+// returns a pointer to the first backbone atom
+struct atom* get_first_backbone_atom(struct nuc* n) {
+  assert(n);
+  if(n->backbone_first) {
+    struct atom* a = n->backbone_first;
+    return a;    
+  } else {
+    printf("Error: No backbone atom found.\n");
+  }
+}
+
+// returns a pointer to the next atom in a set given pointer to atom
+// e.g. the next backbone atom
+struct atom* next_atom(struct atom* a) {
+  assert(a);
+  return a->next;
 }
 
 // returns a pointer to an atom by searching for the serial number "atom_num"
@@ -330,8 +386,6 @@ struct atom* get_atom_by_num(struct nuc* n, int atom_num) {
       a = a->next;
     }
   }
-
-
   printf("No atom found with number %d\n",atom_num);
   exit(1);
 }

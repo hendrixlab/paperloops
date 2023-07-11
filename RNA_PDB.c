@@ -1,3 +1,10 @@
+/*
+ * This library contains the definitions of structures and functions reading PDB files
+ * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
+ *
+ * author: David Hendrix david.hendrix@oregonstate.edu
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -142,8 +149,8 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
   get_model_locs(F, model_count, &model_locs);
 
   struct rna** models = malloc(sizeof(struct rna*) * (*model_count));
-  // loop through the model locations and read in data: 
   for(int i=0; i< *model_count; i++) {
+    // loop through the model locations and read in data: 
     fseek(F,model_locs[i],0);  // jump to the first ATOM line of model
     struct rna* RNA = create_rna();
     while(fgets(line,MAX_LINE_LENGTH,F)) {
@@ -160,6 +167,8 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
 	double* r = extract_coord(line);
 	struct atom* a = create_atom(atom_num,atom_name,r);
 	add_atom(RNA,a);
+      } else if(strcmp(rec_type,"TER   ") == 0) {
+	break;
       }
     }
     models[i] = RNA;

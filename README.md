@@ -9,5 +9,5 @@ make clean
 make
 
 Run example:
-./read_RNA_PDB pdb6w3m.ent
+./test pdb6w3m.ent
 

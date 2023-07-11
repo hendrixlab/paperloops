@@ -11,5 +11,6 @@ RNA_molecule.o: RNA_molecule.c RNA_molecule.h
 
 clean:
 	rm -f RNA_PDB.o RNA_molecule.o 
-	rm -rf test.dSYM
+	rm -rf read_RNA_PDB.dSYM
+	rm -f test
 	rm -f *~

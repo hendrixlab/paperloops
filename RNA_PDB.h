@@ -1,3 +1,10 @@
+/*
+ * This library contains the definitions of structures and functions reading PDB files
+ * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
+ *
+ * author: David Hendrix david.hendrix@oregonstate.edu
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
