@@ -8,6 +8,14 @@
 #ifndef _RNA_MOLECULE
 #define _RNA_MOLECULE
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+
+#include "vectorfun.h"
+#include "RNA_molecule.h"
+
 /* Structure used to represent RNA molecule linked list */
 struct rna;
 
@@ -34,10 +42,14 @@ int is_sugar_atom(struct atom* a);
 void add_backbone_atom(struct rna* RNA, struct atom* a);
 void add_sugar_atom(struct rna* RNA, struct atom* a);
 void add_base_atom(struct rna* RNA, struct atom* a);
-int last_nuc_has_num(struct rna* RNA, int nuc_num);
+int new_nuc_num(struct rna* RNA, int nuc_num);
 struct nuc* get_first_nuc(struct rna* RNA);
 struct nuc* get_nuc_by_num(struct rna* RNA, int nuc_num);
-struct nuc* next_nuc(struct nuc* n);
+int before_end(struct rna* RNA, struct nuc* n);
+struct nuc* next_nuc(struct rna* RNA, struct nuc* n);
+struct nuc* prev_nuc(struct rna* RNA, struct nuc* n);
+struct atom* prev_nuc_last_backbone_atom(struct rna* RNA, struct nuc* n);
+struct atom* next_nuc_first_backbone_atom(struct rna* RNA, struct nuc* n);
 struct atom* get_first_backbone_atom(struct nuc* n);
 struct atom* next_atom(struct atom* a);
 struct atom* get_atom_by_num(struct nuc* n, int atom_num);
@@ -46,6 +58,9 @@ char* get_nuc_name(struct nuc* n);
 int get_atom_num(struct atom* a);
 char* get_atom_name(struct atom* a);
 char* get_atom_type(struct atom* a);
+double torsion(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *p4);
+void compute_torsion_angles(struct rna* RNA);
+char* set_rna_sequence(struct rna* RNA);
 char* get_rna_sequence(struct rna* RNA);
 
 #endif

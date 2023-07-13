@@ -1,8 +1,9 @@
+#include "RNA_PDB.h"
+#include "RNA_molecule.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "RNA_molecule.h"
-#include "RNA_PDB.h"
 
 int main(int argc, char *argv[]) {
   if(argc == 2) {
@@ -15,24 +16,11 @@ int main(int argc, char *argv[]) {
   int model_count;
   struct rna** models = read_pdb_file(file_name,&model_count);
 
+  printf("loaded RNA nucleotides.\n");
   struct rna* RNA = models[0];
-  struct nuc* n = get_first_nuc(RNA);
-  int FIRST = 1;
-  while(n) {
-    printf("%d - %s:",get_nuc_num(n),get_nuc_name(n));
-    /*
-    if(!FIRST) {
-      struct atom* prev_a = get_prev_backbone_atom(n);
-    }
-    */
-    struct atom* a = get_first_backbone_atom(n);
-    while(a) {
-      printf(" - %s",get_atom_name(a));
-      a = next_atom(a);      
-    }    
-    printf("\n");
-    n = next_nuc(n);
-  }
+  
+  compute_torsion_angles(RNA);
+  
   char* sequence = get_rna_sequence(RNA);
   printf("%s\n",sequence);
 

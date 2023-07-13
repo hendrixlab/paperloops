@@ -5,10 +5,20 @@
  * author: David Hendrix david.hendrix@oregonstate.edu
  */
 
+#ifndef _VECTORFUN
+#define _VECTORFUN
+
+#include <math.h>
 #include <stdlib.h>
 #include <assert.h>
 
-double dot_product(double* v, double* w);
 double* add(double* v, double* w);
 double* subtract(double* v, double* w);
-double* cross_product(double* v, double* w);
+double dot(double* v, double* w);
+double norm(double *v);
+double* normalize(double *v);
+double get_angle(double *v, double* w);
+double* orthonormal_projection(double *v, double *w);
+double* cross(double* v, double* w);
+
+#endif

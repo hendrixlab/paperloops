@@ -5,12 +5,15 @@
  * author: David Hendrix david.hendrix@oregonstate.edu
  */
 
+#ifndef _RNA_PDB
+#define _RNA_PDB
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "RNA_molecule.h"
 
-#define MAX_LINE_LENGTH 1000
+#include "RNA_PDB.h"
+#include "RNA_molecule.h"
 
 /* FUNCTION PROTOTYPES */
 
@@ -32,3 +35,4 @@ int* get_model_locs(FILE* F, int* model_count, int** model_locs);
 
 struct rna** read_pdb_file(char* file_name, int* model_count);
 
+#endif

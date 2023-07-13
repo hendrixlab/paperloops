@@ -8,8 +8,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "RNA_molecule.h"
+
 #include "RNA_PDB.h"
+#include "RNA_molecule.h"
 
 #define MAX_LINE_LENGTH 1000
 
@@ -150,15 +151,16 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
 
   struct rna** models = malloc(sizeof(struct rna*) * (*model_count));
   for(int i=0; i< *model_count; i++) {
+    printf("loading model %d\n",i);
     // loop through the model locations and read in data: 
     fseek(F,model_locs[i],0);  // jump to the first ATOM line of model
     struct rna* RNA = create_rna();
     while(fgets(line,MAX_LINE_LENGTH,F)) {
       strncpy(rec_type,line,6);
-      if(strcmp(rec_type,"ATOM  ") == 0) {	
+      if(strcmp(rec_type,"ATOM  ") == 0) {
 	int nuc_num = extract_nuc_num(line);
-	char* nuc_name = extract_nuc_name(line);	
-	if(!last_nuc_has_num(RNA,nuc_num)) {
+	char* nuc_name = extract_nuc_name(line);
+	if(new_nuc_num(RNA,nuc_num)) {
 	  struct nuc* n = create_nuc(nuc_num,nuc_name);
 	  add_nuc(RNA,n);
 	}
@@ -172,6 +174,7 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
       }
     }
     models[i] = RNA;
+    printf("loaded model %d\n",i);
   }
   fclose(F);
   return models;
