@@ -17,7 +17,9 @@ double* subtract(double* v, double* w);
 double dot(double* v, double* w);
 double norm(double *v);
 double* normalize(double *v);
+double arccos(double x);
 double get_angle(double *v, double* w);
+double argument(double x, double y);
 double* orthonormal_projection(double *v, double *w);
 double* cross(double* v, double* w);
 

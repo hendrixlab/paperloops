@@ -12,6 +12,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+const float PI=3.141593;
+
 double* add(double* v, double* w) {
   double* result = malloc(3 * sizeof(double));
   result[0] = v[0] + w[0];
@@ -47,18 +49,25 @@ double* normalize(double *v) {
   return result;
 }
 
+double arccos(double x) {
+  return acos(x)*180.0/PI;
+}
+
 double get_angle(double *v, double* w) {
-  printf("dot: %f\n",dot(v,w));
-  return acos(dot(v,w));
+  return acos(dot(v,w)/(norm(v)*norm(w)))*180.0/PI;
+}
+
+double argument(double x, double y) {
+  return atan(y/x)*180.0/PI;
 }
 
 double* orthonormal_projection(double *v, double *w) {
   double* result = malloc(3 * sizeof(double));
-  double dot_product = dot(v,w);
-  double norm_w = norm(w);
-  result[0] = v[0] - w[0] * dot_product / dot(w,w);
-  result[1] = v[1] - w[1] * dot_product / dot(w,w);
-  result[2] = v[2] - w[2] * dot_product / dot(w,w);
+  double v_dot_w = dot(v,w);
+  double w_dot_w = dot(w,w);
+  result[0] = v[0] - w[0] * v_dot_w / w_dot_w;
+  result[1] = v[1] - w[1] * v_dot_w / w_dot_w;
+  result[2] = v[2] - w[2] * v_dot_w / w_dot_w;
   return normalize(result);
 }
 

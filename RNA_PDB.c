@@ -116,7 +116,7 @@ int* get_model_locs(FILE* F, int* model_count, int** model_locs) {
 	FOUND_ATOM = 1;
 	int model_num = 1;
 	int offset = ftell(F) - strlen(line);
-	printf("model %d offset: %d\n",model_num,offset);
+	//printf("model %d offset: %d\n",model_num,offset);
 	(*model_locs)[model_num-1] = offset;	
       }
     } else if(strcmp(rec_type,"MODEL ") == 0) {
@@ -127,7 +127,7 @@ int* get_model_locs(FILE* F, int* model_count, int** model_locs) {
       sprintf(model_num_str,"%.4s",line+11);
       int model_num = atoi(model_num_str);
       int offset = ftell(F);
-      printf("model %d offset: %d\n",model_num,offset);
+      //printf("model %d offset: %d\n",model_num,offset);
       (*model_locs)[model_num-1] = offset;
     }
   }
@@ -151,7 +151,7 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
 
   struct rna** models = malloc(sizeof(struct rna*) * (*model_count));
   for(int i=0; i< *model_count; i++) {
-    printf("loading model %d\n",i);
+    //printf("loading model %d\n",i);
     // loop through the model locations and read in data: 
     fseek(F,model_locs[i],0);  // jump to the first ATOM line of model
     struct rna* RNA = create_rna();
@@ -174,7 +174,7 @@ struct rna** read_pdb_file(char* file_name, int* model_count) {
       }
     }
     models[i] = RNA;
-    printf("loaded model %d\n",i);
+    //printf("loaded model %d\n",i);
   }
   fclose(F);
   return models;

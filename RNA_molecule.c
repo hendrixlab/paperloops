@@ -39,8 +39,8 @@ struct nuc {
   int num;
   char* name;
   int size;
-  double* bbta[6]; // backbone torsion angles
-  double* sta[5];  // sugar torsion angles 
+  double bbta[6]; // backbone torsion angles
+  double sta[5];  // sugar torsion angles 
   struct nuc* next;
   struct nuc* prev;
 };
@@ -451,35 +451,69 @@ char* get_atom_type(struct atom* a) {
  * Torsion angle calculations *
  ******************************/
 
-double torsion(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *p4) {
-  printf("p1 - %f,%f,%f\n",p1->r[0],p1->r[1],p1->r[2]);
-  printf("p2 - %f,%f,%f\n",p2->r[0],p2->r[1],p2->r[2]);
-  printf("p3 - %f,%f,%f\n",p3->r[0],p3->r[1],p3->r[2]);
-  printf("p4 - %f,%f,%f\n",p4->r[0],p4->r[1],p4->r[2]);
-  double* vec_a = malloc(3 * sizeof(double));
-  double* vec_b = malloc(3 * sizeof(double));
-  double* vec_c = malloc(3 * sizeof(double));
-  vec_a = subtract(p2->r,p1->r);
-  vec_b = subtract(p3->r,p2->r);
-  vec_c = subtract(p4->r,p3->r);
-  printf("vec_a - %f,%f,%f\n",vec_a[0],vec_a[1],vec_a[2]);
-  printf("vec_b - %f,%f,%f\n",vec_b[0],vec_b[1],vec_b[2]);
-  printf("vec_c - %f,%f,%f\n",vec_c[0],vec_c[1],vec_c[2]);
-  //double dot_prod = (dot(vec_b,vec_c) * dot(vec_a,vec_b))/dot(vec_b,vec_b) - dot(vec_a,vec_c);  
-  double* proj_a = orthonormal_projection(vec_a,vec_b);
-  double* proj_c = orthonormal_projection(vec_c,vec_a);
-  printf("proj_a - %f,%f,%f\n",proj_a[0],proj_a[1],proj_a[2]);
-  printf("proj_c - %f,%f,%f\n",proj_c[0],proj_c[1],proj_c[2]);
-  double angle = get_angle(proj_a,proj_c);
-  printf("angle: %f\n",angle);
-  double sign = dot(cross(proj_a,proj_c),vec_b);
-  if(sign < 0) {
-    angle = -angle;
+double torsion1(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *p4) {
+  // method 1: most intutive method, from: https://x3dna.org/highlights/how-to-calculate-torsion-angle
+  if(p1 && p2 && p3 && p4) {
+    double* vec_a = malloc(3 * sizeof(double));
+    double* vec_b = malloc(3 * sizeof(double));
+    double* vec_c = malloc(3 * sizeof(double));
+    vec_a = normalize(subtract(p1->r,p2->r)); // note p1-p2 so it is from p2 to p1
+    vec_b = normalize(subtract(p3->r,p2->r));
+    vec_c = normalize(subtract(p4->r,p3->r));
+    double* proj_a = orthonormal_projection(vec_a,vec_b);
+    double* proj_c = orthonormal_projection(vec_c,vec_b);
+    double angle = get_angle(proj_a,proj_c);
+    double sign = dot(cross(proj_a,proj_c),vec_b);
+    if(sign < 0) {
+      angle = -angle;
+    }
+    return angle;
+  } else {
+    return NAN;
   }
-  return angle;
+}
+
+double torsion2(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *p4) {
+  // method 2: simple with cross products, described in: https://www.math.fsu.edu/~quine/MB_10/6_torsion.pdf
+  // I added a sign correction based on cross product with vec_b --> same result as method 1
+  if(p1 && p2 && p3 && p4) {
+    double* vec_a = malloc(3 * sizeof(double));
+    double* vec_b = malloc(3 * sizeof(double));
+    double* vec_c = malloc(3 * sizeof(double));
+    vec_a = normalize(subtract(p2->r,p1->r)); // note p1-p2 so it is from p2 to p1
+    vec_b = normalize(subtract(p3->r,p2->r));
+    vec_c = normalize(subtract(p4->r,p3->r));
+    double angle = get_angle(cross(vec_a,vec_b),cross(vec_b,vec_c));
+    double sign = dot(cross(cross(vec_a,vec_b),cross(vec_b,vec_c)),vec_b);
+    if(sign < 0) {
+      angle = -angle;
+    }
+    return angle;
+  } else {
+    return NAN;
+  }
+}
+
+double torsion3(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *p4) {
+  // method 3: https://www.math.fsu.edu/~quine/MB_10/6_torsion.pdf
+  // seemed off by an additive factor of pi
+  if(p1 && p2 && p3 && p4) {
+    double* vec_a = malloc(3 * sizeof(double));
+    double* vec_b = malloc(3 * sizeof(double));
+    double* vec_c = malloc(3 * sizeof(double));
+    vec_a = normalize(subtract(p2->r,p1->r)); // note p1-p2 so it is from p2 to p1
+    vec_b = normalize(subtract(p3->r,p2->r));
+    vec_c = normalize(subtract(p4->r,p3->r));  
+    //double angle = argument(dot(cross(vec_b,vec_c),cross(vec_a,vec_b)),dot(cross(vec_b,vec_c),cross(vec_b,cross(vec_b,vec_c)))/norm(vec_b));
+    double angle = argument(dot(vec_a,vec_b)*dot(vec_b,vec_c)-dot(vec_b,vec_b)*dot(vec_a,vec_c),norm(vec_b)*dot(vec_a,cross(vec_b,vec_c)));
+    return angle;
+  } else {
+    return NAN;
+  }
 }
 
 void compute_torsion_angles(struct rna* RNA) {
+  char* angle_name[] = {"alpha","beta","gamma","delta","epsilon","zeta"};
   struct nuc* n = get_first_nuc(RNA);
   int FIRST = 1;
   while(before_end(RNA,n)) {
@@ -491,6 +525,7 @@ void compute_torsion_angles(struct rna* RNA) {
     if(strcmp(get_atom_name(p2),"P") == 0) {
       count = 0;
     } else if(strcmp(get_atom_name(p2),"O5'") == 0) {
+      n->bbta[0] = NAN;
       count = 1;
     } else {
       printf("Unexpected first atom in backbone: \"%s\"\n",get_atom_name(p2));
@@ -499,23 +534,12 @@ void compute_torsion_angles(struct rna* RNA) {
     int CONTINUE = 1;
     int NEXT_NUC = 0;
     while(CONTINUE) {
-      double angle = -100;
-      if(p1 && p2 && p3 && p4) {
-	angle = torsion(p1,p2,p3,p4);
-      }
-      printf("%d - %s: ",get_nuc_num(n),get_nuc_name(n));
-      char* label1 = p1 ? p1->name : "None";
-      char* label2 = p2 ? p2->name : "None";
-      char* label3 = p3 ? p3->name : "None";
-      char* label4 = p4 ? p4->name : "None";
-      printf("%d - %f (%s,%s,%s,%s) %d\n",count,angle,label1,label2,label3,label4,NEXT_NUC);
-      // update to the next backbone atom quadruple
-      p1 = p2;
+      n->bbta[count] = torsion1(p1,p2,p3,p4); // store torsion angle
+      p1 = p2; // --> next quadruple
       p2 = p3;
       p3 = p4;
       if(p4 && next_atom(p4)) {
 	p4 = next_atom(p4);
-	//printf("retrieved atom method 1\n");
 	if(NEXT_NUC > 1) {
 	  CONTINUE = 0; // allow two atoms from next nucleotide P & O5'
 	} else if(NEXT_NUC > 0) {
@@ -525,14 +549,12 @@ void compute_torsion_angles(struct rna* RNA) {
 	if(before_end(RNA,next_nuc(RNA,n))) {
 	  p4 = next_nuc_first_backbone_atom(RNA,n);
 	  NEXT_NUC++;
-	  //printf("retrieved atom method 2\n");
 	} else {
 	  CONTINUE = 0;
 	}
       }
       count++;
     }
-    printf("\n");
     n = next_nuc(RNA,n);
   }
 }
