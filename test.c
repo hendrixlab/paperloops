@@ -19,7 +19,9 @@ int main(int argc, char *argv[]) {
   printf("loaded RNA nucleotides.\n");
   struct rna* RNA = models[0];
   
-  compute_torsion_angles(RNA);
+  compute_backbone_torsion(RNA);
+  //print_backbone_torsion(RNA);
+  compute_sugar_torsion(RNA);
   
   char* sequence = get_rna_sequence(RNA);
   printf("%s\n",sequence);

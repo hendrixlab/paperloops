@@ -53,6 +53,9 @@ struct atom {
   char* type;
   struct atom* next;
   struct atom* prev;
+  struct atom* sugar_next; // pointers just for sugar ring
+  struct atom* sugar_prev;
+  
 };
 
 /* 
@@ -99,6 +102,8 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
   a->name = name_string;
   a->next = NULL;
   a->prev = NULL;
+  a->sugar_next = NULL;
+  a->sugar_prev = NULL;
   return a;
 }
 
@@ -177,14 +182,20 @@ void add_nuc(struct rna* RNA, struct nuc* n) {
 
 void add_atom(struct rna* RNA, struct atom* a) {
   assert(RNA);
+  //printf("adding: %s\n",a->name);
   if(is_backbone_atom(a)) {
     // atom is part of backbone
+    //printf("adding to backbone\n");
     add_backbone_atom(RNA,a);
-  } else if(is_sugar_atom(a)) {
+  }
+  if(is_sugar_atom(a)) {
     // atom is part of sugar
+    //printf("adding to sugar\n");
     add_sugar_atom(RNA,a);
-  } else {
+  }
+  if((!is_backbone_atom(a))&&(!is_sugar_atom(a))) {
     //atom is part of the base
+    //printf("adding to base\n");
     add_base_atom(RNA,a);
   }
 }
@@ -205,8 +216,8 @@ int is_backbone_atom(struct atom* a) {
 int is_sugar_atom(struct atom* a) {
   // this function could be faster with a hash
   // not sure whether to double-add the C4' and C3' to both backbone and sugar
-  char* sugar_atoms[] = {"C2'","C1'","O4'"};
-  int len = 3; // hard-coded 
+  char* sugar_atoms[] = {"C1'","O4'","C4'","C3'","C2'"};
+  int len = 5; // hard-coded 
   for(int i=0; i<len; i++) {
     if(strcmp(sugar_atoms[i],a->name) == 0) {
       return 1;
@@ -240,9 +251,10 @@ void add_sugar_atom(struct rna* RNA, struct atom* a) {
     printf("error: attempted to add a sugar atom without a nuc in place.\n");
     exit(1);
   } else {  // next check if there is an atom attached to first nuc
+    // **note: sugar atoms use separate pointers 
     if(RNA->sentinel->prev->sugar_first != NULL) {
-      RNA->sentinel->prev->sugar_last->next = a;
-      a->prev = RNA->sentinel->prev->sugar_last;
+      RNA->sentinel->prev->sugar_last->sugar_next = a;
+      a->sugar_prev = RNA->sentinel->prev->sugar_last;
       RNA->sentinel->prev->sugar_last = a;
       RNA->sentinel->prev->size++;
     } else {
@@ -286,7 +298,7 @@ int new_nuc_num(struct rna* RNA, int nuc_num) {
   if(rna_is_empty(RNA)) {
     return 1;
   } else {
-    return RNA->sentinel->prev->num != nuc_num;
+    return RNA->sentinel->prev->num != nuc_num; // return true if nuc_num is a new nuc_num
   }
 }
 
@@ -369,6 +381,17 @@ struct atom* get_first_backbone_atom(struct nuc* n) {
   }
 }
 
+// returns a pointer to the first sugar atom
+struct atom* get_first_sugar_atom(struct nuc* n) {
+  assert(n);
+  if(n->sugar_first) {
+    struct atom* a = n->sugar_first;
+    return a;    
+  } else {
+    printf("Error: No backbone atom found.\n");
+  }
+}
+
 // returns a pointer to the next atom in a set given pointer to atom
 // e.g. the next backbone atom
 struct atom* next_atom(struct atom* a) {
@@ -381,6 +404,20 @@ struct atom* next_atom(struct atom* a) {
 struct atom* prev_atom(struct atom* a) {
   assert(a);
   return a->prev;
+}
+
+// returns a pointer to the next atom in a set given pointer to atom
+// e.g. the next backbone atom
+struct atom* next_sugar_atom(struct atom* a) {
+  assert(a);
+  return a->sugar_next;
+}
+
+// returns a pointer to the next atom in a set given pointer to atom
+// e.g. the next backbone atom
+struct atom* prev_sugar_atom(struct atom* a) {
+  assert(a);
+  return a->sugar_prev;
 }
 
 // returns a pointer to an atom by searching for the serial number "atom_num"
@@ -401,7 +438,7 @@ struct atom* get_atom_by_num(struct nuc* n, int atom_num) {
       if(atom_num == a->num) {
 	return a;
       }
-      a = a->next;
+      a = a->sugar_next;
     }
   }
   if(n->base_first) {
@@ -415,6 +452,102 @@ struct atom* get_atom_by_num(struct nuc* n, int atom_num) {
   }
   printf("No atom found with number %d\n",atom_num);
   exit(1);
+}
+
+// prints all sugar atoms for a nucleotide
+struct atom* print_sugar_atoms(struct nuc* n) {
+  assert(n);
+  printf("(%s)->",n->name);
+  if(n->sugar_first) {
+    struct atom* a = n->sugar_first;
+    int count = 0;
+    while(count<5) {
+      printf("[%s]",a->name);
+      a = a->sugar_next;
+      count++;
+    }
+  } else {
+    printf("-|");
+  }
+  printf("\n");
+}
+
+
+// returns a pointer to an atom by searching by name
+struct atom* get_sugar_atom_by_name(struct nuc* n, char* atom_name) {
+  assert(n);
+  if(n->sugar_first) {
+    struct atom* a = n->sugar_first;
+    while(a) {
+      if(strcmp(atom_name,a->name) == 0) {
+	return a;
+      }
+      a = a->sugar_next;
+    }
+  }
+  printf("No atom found with name: %s\n",atom_name);
+  exit(1);
+}
+
+// returns a pointer to an atom by searching by name
+struct atom* remove_sugar_atom_by_name(struct nuc* n, char* atom_name) {
+  assert(n);
+  if(n->sugar_first) {
+    struct atom* a = n->sugar_first;
+    while(a) {
+      if(strcmp(atom_name,a->name) == 0) {
+	if(a == n->sugar_first) {
+	  if(a == n->sugar_last) { // both first and last -> only one
+	    n->sugar_first = NULL;
+	    n->sugar_last = NULL;
+	  } else { // at least one other node after
+	    n->sugar_first = a->sugar_next;
+	    n->sugar_first->prev = NULL;
+	  }
+	} else if(a == n->sugar_last) {  // last but not first
+	  a->sugar_prev->sugar_next = NULL;
+	  n->sugar_last = a->sugar_prev;
+	} else {
+	  a->sugar_prev->sugar_next = a->sugar_next;
+	  a->sugar_next->sugar_prev = a->sugar_prev;
+	}
+	a->sugar_next = NULL;
+	a->sugar_prev = NULL;
+	return a;
+      }
+      a = a->sugar_next;
+    }
+  }
+  printf("No atom found with name: %s\n",atom_name);
+  exit(1);
+}
+
+void sort_sugar_atoms(struct nuc* n) {
+  struct atom* new_sugar_first = NULL;
+  struct atom* new_sugar_last = NULL;
+  char* sugar_atoms[] = {"C1'","O4'","C4'","C3'","C2'"};
+  int len = 5; // hard-coded
+  for(int i=0; i<len; i++) {
+    //print_sugar_atoms(n);
+    //printf("removing %d %s\n",i,sugar_atoms[i]);
+    struct atom* a = remove_sugar_atom_by_name(n,sugar_atoms[i]);
+    //printf("sort: adding in %s\n",a->name);
+    //print_sugar_atoms(n);
+    if(i==0) {
+      a->sugar_next = a;
+      a->sugar_prev = a;
+      new_sugar_first = a;
+      new_sugar_last = a;
+    } else {
+      a->sugar_prev = new_sugar_last;
+      a->sugar_next = new_sugar_first;
+      new_sugar_last->sugar_next = a;
+      new_sugar_last = a;
+      new_sugar_first->sugar_prev = new_sugar_last;
+    }
+  }
+  n->sugar_first = new_sugar_first;
+  n->sugar_last = new_sugar_last;
 }
 
 // retrieve the serial number of a nucletide 
@@ -512,8 +645,7 @@ double torsion3(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *
   }
 }
 
-void compute_torsion_angles(struct rna* RNA) {
-  char* angle_name[] = {"alpha","beta","gamma","delta","epsilon","zeta"};
+void compute_backbone_torsion(struct rna* RNA) {
   struct nuc* n = get_first_nuc(RNA);
   int FIRST = 1;
   while(before_end(RNA,n)) {
@@ -555,6 +687,53 @@ void compute_torsion_angles(struct rna* RNA) {
       }
       count++;
     }
+    n = next_nuc(RNA,n);
+  }
+}
+
+void compute_sugar_torsion(struct rna* RNA) {
+  struct nuc* n = get_first_nuc(RNA);  
+  while(before_end(RNA,n)) {
+    // sort atoms in bonded order
+    sort_sugar_atoms(n);
+    int count = 0;
+    struct atom* p2 = get_first_sugar_atom(n);
+    struct atom* p1 = prev_sugar_atom(p2);
+    struct atom* p3 = next_sugar_atom(p2);
+    struct atom* p4 = next_sugar_atom(p3);;
+    while(count<5) {
+      n->sta[count] = torsion1(p1,p2,p3,p4); // store torsion angle    
+      printf("%d %s: ",n->num,n->name);
+      printf("computing torsion for: %s %s %s %s -> ",p1->name,p2->name,p3->name,p4->name);
+      printf("%.2f\n",n->sta[count]);
+      p1 = p2;
+      p2 = p3;
+      p3 = p4;
+      p4 = next_sugar_atom(p3);
+      count++;
+    }
+    n = next_nuc(RNA,n);
+  }
+}
+
+
+void print_backbone_torsion(struct rna* RNA) {
+  char* angle_name[] = {"alpha","beta","gamma","delta","epsilon","zeta"};
+  struct nuc* n = get_first_nuc(RNA);
+  int FIRST = 1;
+  /* header */
+  printf("pos\tnt");
+  for(int i=0; i<6; i++) {
+    printf("\t%s",angle_name[i]);
+  }
+  printf("\n");
+  /* data table */
+  while(before_end(RNA,n)) {
+    printf("%d\t%s",n->num,n->name);
+    for(int i=0; i<6; i++) {
+      printf("\t%.2f",n->bbta[i]);
+    }
+    printf("\n");
     n = next_nuc(RNA,n);
   }
 }
