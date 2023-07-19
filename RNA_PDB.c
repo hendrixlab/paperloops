@@ -9,8 +9,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "RNA_PDB.h"
-#include "RNA_molecule.h"
+#include "rna_pdb.h"
+#include "rna_data.h"
 
 #define MAX_LINE_LENGTH 1000
 
@@ -73,7 +73,7 @@ char* extract_nuc_name(char* line) {
   return nuc_name;
 }
 
-int get_model_count(FILE* F) {
+int read_model_count(FILE* F) {
   char line[MAX_LINE_LENGTH];
   char rec_type[6]; // the max length for a record type is 6
   
@@ -95,18 +95,19 @@ int get_model_count(FILE* F) {
   return model_count;
 }
 
-int* get_model_locs(FILE* F, int* model_count, int** model_locs) {
+int* read_model_locs(FILE* F, struct rna_data* RNA) {
   char line[MAX_LINE_LENGTH];
   char rec_type[6]; // the max length for a record type is 6
   int FOUND_MODEL = 0;
   int FOUND_ATOM = 0;
 
   // get the number of models 
-  *model_count = get_model_count(F);
-
+  int model_count = read_model_count(F);
+  set_model_count(RNA,model_count);
+  
   // reset file and allocate memory
   fseek(F,0,0);
-  *model_locs = malloc(*model_count * sizeof(int));
+  allocate_model_locs(RNA);
 
   // read the model locations
   while(fgets(line,MAX_LINE_LENGTH,F)) {
@@ -114,10 +115,9 @@ int* get_model_locs(FILE* F, int* model_count, int** model_locs) {
     if(strcmp(rec_type,"ATOM  ") == 0) {
       if(!FOUND_MODEL && !FOUND_ATOM) {
 	FOUND_ATOM = 1;
-	int model_num = 1;
+	int model_num = 0;
 	int offset = ftell(F) - strlen(line);
-	//printf("model %d offset: %d\n",model_num,offset);
-	(*model_locs)[model_num-1] = offset;	
+	set_model_loc(RNA,model_num,offset);
       }
     } else if(strcmp(rec_type,"MODEL ") == 0) {
       // MODEL        1                                                                  
@@ -127,55 +127,52 @@ int* get_model_locs(FILE* F, int* model_count, int** model_locs) {
       sprintf(model_num_str,"%.4s",line+11);
       int model_num = atoi(model_num_str);
       int offset = ftell(F);
-      //printf("model %d offset: %d\n",model_num,offset);
-      (*model_locs)[model_num-1] = offset;
+      set_model_loc(RNA,model_num-1,offset); // convert model_num to 0-based for loading
     }
   }
-  //*model_locs = temp_model_locs;
 }
 
-struct rna** read_pdb_file(char* file_name, int* model_count) {
+struct rna_data* read_pdb_file(char* input_file_name) {
   FILE* F;
   char line[MAX_LINE_LENGTH];
   char rec_type[6]; // the max length for a record type is 6
   
-  F = fopen(file_name,"r");
+  F = fopen(input_file_name,"r");
   if(F == NULL) {
-    printf("Error opening the file. Check permissions/file name.\n");
+    printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",input_file_name);
     exit(1);
   }
 
+  struct rna_data* RNA = create_rna_data(input_file_name);
   // get the number and locations of each model
-  int* model_locs;
-  get_model_locs(F, model_count, &model_locs);
+  read_model_locs(F, RNA);
 
-  struct rna** models = malloc(sizeof(struct rna*) * (*model_count));
-  for(int i=0; i< *model_count; i++) {
-    //printf("loading model %d\n",i);
+  allocate_rna_models(RNA);
+  for(int i=0; i< get_model_count(RNA); i++) {
     // loop through the model locations and read in data: 
-    fseek(F,model_locs[i],0);  // jump to the first ATOM line of model
-    struct rna* RNA = create_rna();
+    fseek(F,get_model_loc(RNA,i),0);  // jump to the first ATOM line of model
+    // create RNA_model 
+    struct rna_model* RNA_model = create_rna_model();
     while(fgets(line,MAX_LINE_LENGTH,F)) {
       strncpy(rec_type,line,6);
       if(strcmp(rec_type,"ATOM  ") == 0) {
 	int nuc_num = extract_nuc_num(line);
 	char* nuc_name = extract_nuc_name(line);
-	if(new_nuc_num(RNA,nuc_num)) {
+	if(new_nuc_num(RNA_model,nuc_num)) {
 	  struct nuc* n = create_nuc(nuc_num,nuc_name);
-	  add_nuc(RNA,n);
+	  add_nuc(RNA_model,n);
 	}
 	int atom_num = extract_atom_num(line);
 	char* atom_name = extract_atom_name(line);
 	double* r = extract_coord(line);
 	struct atom* a = create_atom(atom_num,atom_name,r);
-	add_atom(RNA,a);
+	add_atom(RNA_model,a);
       } else if(strcmp(rec_type,"TER   ") == 0) {
 	break;
       }
     }
-    models[i] = RNA;
-    //printf("loaded model %d\n",i);
+    set_rna_model(RNA,i,RNA_model);
   }
   fclose(F);
-  return models;
+  return RNA;
 }

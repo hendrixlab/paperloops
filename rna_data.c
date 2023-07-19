@@ -1,4 +1,5 @@
-/*
+/* rna_data.c 
+ *
  * This library contains the definitions of structures and functions for implementing
  * the RNA data structure
  *
@@ -10,7 +11,7 @@
 #include <string.h>
 #include <assert.h>
 #include "vectorfun.h"
-#include "RNA_molecule.h"
+#include "rna_data.h"
 
 /*
  *  Data Structure Definitions 
@@ -22,7 +23,14 @@
  *         -base atoms
  */
 
-struct rna {
+struct rna_data {
+  struct rna_model** models;
+  int model_count;
+  int *model_locs;
+  char* input_file_name;
+};
+  
+struct rna_model {
   struct nuc* sentinel;
   int length;
   char* seq;
@@ -54,23 +62,30 @@ struct atom {
   struct atom* next;
   struct atom* prev;
   struct atom* sugar_next; // pointers just for sugar ring
-  struct atom* sugar_prev;
-  
+  struct atom* sugar_prev;  
 };
 
 /* 
  * Node creation subroutines 
  */
 
-struct rna* create_rna() {
-  struct rna* RNA = malloc(sizeof(struct rna));
-  RNA->sentinel = malloc(sizeof(struct nuc));
-  RNA->sentinel->num = 0;
-  RNA->sentinel->name = "sentinel";
-  RNA->sentinel->next = RNA->sentinel;
-  RNA->sentinel->prev = RNA->sentinel;
-  RNA->length = 0;
+struct rna_data* create_rna_data(char* input_file_name) {
+  struct rna_data* RNA = malloc(sizeof(struct rna_data));
+  char* alloc_string = malloc(sizeof(char)*(strlen(input_file_name)+1));
+  strcpy(alloc_string,input_file_name);
+  RNA->input_file_name = alloc_string;
   return RNA;
+}
+
+struct rna_model* create_rna_model() {
+  struct rna_model* RNA_model = malloc(sizeof(struct rna_model));
+  RNA_model->sentinel = malloc(sizeof(struct nuc));
+  RNA_model->sentinel->num = 0;
+  RNA_model->sentinel->name = "sentinel";
+  RNA_model->sentinel->next = RNA_model->sentinel;
+  RNA_model->sentinel->prev = RNA_model->sentinel;
+  RNA_model->length = 0;
+  return RNA_model;
 }
 
 struct nuc* create_nuc(int nuc_num, char* nuc_name) {
@@ -111,16 +126,16 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
  * Memory management/freeing subroutines 
  */
 
-void free_rna(struct rna* RNA) {
-  assert(RNA);
+void free_rna_model(struct rna_model* RNA_model) {
+  assert(RNA_model);
   
-  while(!rna_is_empty(RNA)) {
-    struct nuc* removed_nuc = get_first_nuc(RNA);
-    RNA->sentinel = removed_nuc->next;
-    removed_nuc->next->prev = RNA->sentinel;
+  while(!rna_model_is_empty(RNA_model)) {
+    struct nuc* removed_nuc = get_first_nuc(RNA_model);
+    RNA_model->sentinel = removed_nuc->next;
+    removed_nuc->next->prev = RNA_model->sentinel;
     free_nuc(removed_nuc);
   }
-  free(RNA);
+  free(RNA_model);
 }
 
 void free_nuc(struct nuc* n) {
@@ -149,9 +164,9 @@ void free_atom(struct atom* a) {
   free(a);
 }
 
-int rna_is_empty(struct rna* RNA) {
-  assert(RNA);
-  return RNA->sentinel->next == RNA->sentinel;
+int rna_model_is_empty(struct rna_model* RNA_model) {
+  assert(RNA_model);
+  return RNA_model->sentinel->next == RNA_model->sentinel;
 }
 
 int nuc_backbone_is_empty(struct nuc* n) {
@@ -172,31 +187,59 @@ int nuc_base_is_empty(struct nuc* n) {
  * Subroutines to add elements to the data structure 
  */
 
-void add_nuc(struct rna* RNA, struct nuc* n) {
-  RNA->sentinel->prev->next = n;
-  n->prev = RNA->sentinel->prev;
-  RNA->sentinel->prev = n;
-  n->next = RNA->sentinel;
-  RNA->length++;
+void set_model_count(struct rna_data* RNA, int model_count) {
+  RNA->model_count = model_count;
 }
 
-void add_atom(struct rna* RNA, struct atom* a) {
-  assert(RNA);
+int get_model_count(struct rna_data* RNA) {
+  return RNA->model_count;
+}
+
+void allocate_model_locs(struct rna_data* RNA) {
+  RNA->model_locs = malloc(sizeof(int) * (RNA->model_count));
+}
+
+void set_model_loc(struct rna_data* RNA, int model_num, int offset) {
+  RNA->model_locs[model_num] = offset;
+}
+
+int get_model_loc(struct rna_data* RNA, int model_num) {
+  return RNA->model_locs[model_num];
+}
+
+void allocate_rna_models(struct rna_data* RNA) {
+  RNA->models = malloc(sizeof(struct rna_model*) * (RNA->model_count));
+}
+
+void set_rna_model(struct rna_data* RNA, int model_num, struct rna_model* RNA_model) {
+  RNA->models[model_num] = RNA_model;
+}
+
+void add_nuc(struct rna_model* RNA_model, struct nuc* n) {
+  RNA_model->sentinel->prev->next = n;
+  n->prev = RNA_model->sentinel->prev;
+  RNA_model->sentinel->prev = n;
+  n->next = RNA_model->sentinel;
+  RNA_model->length++;
+}
+
+void add_atom(struct rna_model* RNA_model, struct atom* a) {
+  assert(RNA_model);
   //printf("adding: %s\n",a->name);
   if(is_backbone_atom(a)) {
     // atom is part of backbone
     //printf("adding to backbone\n");
-    add_backbone_atom(RNA,a);
+    add_backbone_atom(RNA_model,a);
   }
   if(is_sugar_atom(a)) {
     // atom is part of sugar
     //printf("adding to sugar\n");
-    add_sugar_atom(RNA,a);
+    add_sugar_atom(RNA_model,a);
   }
   if((!is_backbone_atom(a))&&(!is_sugar_atom(a))) {
     //atom is part of the base
     //printf("adding to base\n");
-    add_base_atom(RNA,a);
+    add_base_atom(RNA_model,a);
   }
 }
 
@@ -226,133 +269,133 @@ int is_sugar_atom(struct atom* a) {
   return 0;
 }
 
-void add_backbone_atom(struct rna* RNA, struct atom* a) {
+void add_backbone_atom(struct rna_model* RNA_model, struct atom* a) {
   a->type = "backbone";
-  if(rna_is_empty(RNA)) {   // first if there is a nucleotide
+  if(rna_model_is_empty(RNA_model)) {   // first if there is a nucleotide
     printf("error: attempted to add a backbone atom without a nuc in place.\n");
     exit(1);
   } else {  // next check if there is an atom attached to first nuc
-    if(RNA->sentinel->prev->backbone_first != NULL) {
-      RNA->sentinel->prev->backbone_last->next = a;
-      a->prev = RNA->sentinel->prev->backbone_last;
-      RNA->sentinel->prev->backbone_last = a;
-      RNA->sentinel->prev->size++;
+    if(RNA_model->sentinel->prev->backbone_first != NULL) {
+      RNA_model->sentinel->prev->backbone_last->next = a;
+      a->prev = RNA_model->sentinel->prev->backbone_last;
+      RNA_model->sentinel->prev->backbone_last = a;
+      RNA_model->sentinel->prev->size++;
     } else {   // this is the first atom
-      RNA->sentinel->prev->backbone_first = a;
-      RNA->sentinel->prev->backbone_last = a;
+      RNA_model->sentinel->prev->backbone_first = a;
+      RNA_model->sentinel->prev->backbone_last = a;
     }
   }
-  RNA->sentinel->prev->size++;
+  RNA_model->sentinel->prev->size++;
 }
 
-void add_sugar_atom(struct rna* RNA, struct atom* a) {
+void add_sugar_atom(struct rna_model* RNA_model, struct atom* a) {
   a->type = "sugar";
-  if(rna_is_empty(RNA)) {  // check if there is a nucleotide
+  if(rna_model_is_empty(RNA_model)) {  // check if there is a nucleotide
     printf("error: attempted to add a sugar atom without a nuc in place.\n");
     exit(1);
   } else {  // next check if there is an atom attached to first nuc
     // **note: sugar atoms use separate pointers 
-    if(RNA->sentinel->prev->sugar_first != NULL) {
-      RNA->sentinel->prev->sugar_last->sugar_next = a;
-      a->sugar_prev = RNA->sentinel->prev->sugar_last;
-      RNA->sentinel->prev->sugar_last = a;
-      RNA->sentinel->prev->size++;
+    if(RNA_model->sentinel->prev->sugar_first != NULL) {
+      RNA_model->sentinel->prev->sugar_last->sugar_next = a;
+      a->sugar_prev = RNA_model->sentinel->prev->sugar_last;
+      RNA_model->sentinel->prev->sugar_last = a;
+      RNA_model->sentinel->prev->size++;
     } else {
       // this is the first atom
-      RNA->sentinel->prev->sugar_first = a;
-      RNA->sentinel->prev->sugar_last = a;
+      RNA_model->sentinel->prev->sugar_first = a;
+      RNA_model->sentinel->prev->sugar_last = a;
     }
   }
-  RNA->sentinel->prev->size++;
+  RNA_model->sentinel->prev->size++;
 }
 
-void add_base_atom(struct rna* RNA, struct atom* a) {
+void add_base_atom(struct rna_model* RNA_model, struct atom* a) {
   a->type = "base";
-  if(rna_is_empty(RNA)) { // check if there is a nucleotide
+  if(rna_model_is_empty(RNA_model)) { // check if there is a nucleotide
     printf("error: attempted to add a base atom without a nuc in place.\n");
     exit(1);
   } else {
     // next check if there is an atom attached to first nuc
-    if(RNA->sentinel->prev->base_first != NULL) {
-      RNA->sentinel->prev->base_last->next = a;
-      a->prev = RNA->sentinel->prev->base_last;
-      RNA->sentinel->prev->base_last = a;
-      RNA->sentinel->prev->size++;
+    if(RNA_model->sentinel->prev->base_first != NULL) {
+      RNA_model->sentinel->prev->base_last->next = a;
+      a->prev = RNA_model->sentinel->prev->base_last;
+      RNA_model->sentinel->prev->base_last = a;
+      RNA_model->sentinel->prev->size++;
     } else {
       // this is the first atom
-      RNA->sentinel->prev->base_first = a;
-      RNA->sentinel->prev->base_last = a;
+      RNA_model->sentinel->prev->base_first = a;
+      RNA_model->sentinel->prev->base_last = a;
     }
   }
-  RNA->sentinel->prev->size++;
+  RNA_model->sentinel->prev->size++;
 }
 
 /******************************************************** 
- * Functions to access elements from RNA data structure *
+ * Functions to access elements from RNA_model data structure *
  ********************************************************/
 
-// this function checks if the last nucleotide in RNA has the number "nuc_num"
+// this function checks if the last nucleotide in RNA_model has the number "nuc_num"
 // used to avoid adding a nucleotide more than once 
-int new_nuc_num(struct rna* RNA, int nuc_num) {
-  assert(RNA);
-  if(rna_is_empty(RNA)) {
+int new_nuc_num(struct rna_model* RNA_model, int nuc_num) {
+  assert(RNA_model);
+  if(rna_model_is_empty(RNA_model)) {
     return 1;
   } else {
-    return RNA->sentinel->prev->num != nuc_num; // return true if nuc_num is a new nuc_num
+    return RNA_model->sentinel->prev->num != nuc_num; // return true if nuc_num is a new nuc_num
   }
 }
 
-// returns a pointer to the first nucleotide (nuc) in an RNA 
-struct nuc* get_first_nuc(struct rna* RNA) {
-  assert(RNA);
-  if(!rna_is_empty(RNA)) {
-    struct nuc* n = RNA->sentinel->next;
+// returns a pointer to the first nucleotide (nuc) in an RNA_model 
+struct nuc* get_first_nuc(struct rna_model* RNA_model) {
+  assert(RNA_model);
+  if(!rna_model_is_empty(RNA_model)) {
+    struct nuc* n = RNA_model->sentinel->next;
     return n;
   }
-  printf("Error: No nuc found for the RNA\n");
+  printf("Error: No nuc found for the RNA_model\n");
   exit(1);
 }
 
 // returns a pointer to a nuc by searching for the serial number "nuc_num"
-struct nuc* get_nuc_by_num(struct rna* RNA, int nuc_num) {
-  assert(RNA);
-  if(rna_is_empty(RNA)) {
-    struct nuc* n = RNA->sentinel->next;
-    while(before_end(RNA,n)) {
+struct nuc* get_nuc_by_num(struct rna_model* RNA_model, int nuc_num) {
+  assert(RNA_model);
+  if(rna_model_is_empty(RNA_model)) {
+    struct nuc* n = RNA_model->sentinel->next;
+    while(before_end(RNA_model,n)) {
       if(nuc_num == n->num) {
 	return n;
       }
-      n = next_nuc(RNA,n);
+      n = next_nuc(RNA_model,n);
     }
   }
   printf("No nuc found with number %d\n",nuc_num);
   exit(1);
 }
 
-// checks if the nuc "n" is within the RNA (not the sentinel)
-int before_end(struct rna* RNA, struct nuc* n) {
-  assert(RNA);
+// checks if the nuc "n" is within the RNA_model (not the sentinel)
+int before_end(struct rna_model* RNA_model, struct nuc* n) {
+  assert(RNA_model);
   assert(n);
-  return n != RNA->sentinel;
+  return n != RNA_model->sentinel;
 }
 
-//given a nuc return the next nuc in the RNA sequence
-struct nuc* next_nuc(struct rna* RNA, struct nuc* n) {
+//given a nuc return the next nuc in the RNA_model sequence
+struct nuc* next_nuc(struct rna_model* RNA_model, struct nuc* n) {
   assert(n);
   return n->next;
 }
 
-//given a nuc return the next nuc in the RNA sequence
-struct nuc* prev_nuc(struct rna* RNA, struct nuc* n) {
+//given a nuc return the next nuc in the RNA_model sequence
+struct nuc* prev_nuc(struct rna_model* RNA_model, struct nuc* n) {
   assert(n);
   return n->prev;
 }
 
 // returns a pointer to the previous backbone atom O3' relative to n
-struct atom* prev_nuc_last_backbone_atom(struct rna* RNA, struct nuc* n) {
-  assert(RNA);
+struct atom* prev_nuc_last_backbone_atom(struct rna_model* RNA_model, struct nuc* n) {
+  assert(RNA_model);
   assert(n);
-  if(!before_end(RNA,prev_nuc(RNA,n))) {
+  if(!before_end(RNA_model,prev_nuc(RNA_model,n))) {
     return NULL;
   } else {
     return n->prev->backbone_last;
@@ -360,10 +403,10 @@ struct atom* prev_nuc_last_backbone_atom(struct rna* RNA, struct nuc* n) {
 }
 
 // returns a pointer to the next backbone atom P relative to n+1
-struct atom* next_nuc_first_backbone_atom(struct rna* RNA, struct nuc* n) {
-  assert(RNA);
+struct atom* next_nuc_first_backbone_atom(struct rna_model* RNA_model, struct nuc* n) {
+  assert(RNA_model);
   assert(n);
-  if(!before_end(RNA,next_nuc(RNA,n))) {
+  if(!before_end(RNA_model,next_nuc(RNA_model,n))) {
     return NULL;
   } else {
     return n->next->backbone_first;
@@ -528,11 +571,7 @@ void sort_sugar_atoms(struct nuc* n) {
   char* sugar_atoms[] = {"C1'","O4'","C4'","C3'","C2'"};
   int len = 5; // hard-coded
   for(int i=0; i<len; i++) {
-    //print_sugar_atoms(n);
-    //printf("removing %d %s\n",i,sugar_atoms[i]);
     struct atom* a = remove_sugar_atom_by_name(n,sugar_atoms[i]);
-    //printf("sort: adding in %s\n",a->name);
-    //print_sugar_atoms(n);
     if(i==0) {
       a->sugar_next = a;
       a->sugar_prev = a;
@@ -645,11 +684,23 @@ double torsion3(struct atom* p1, struct atom* p2, struct atom* p3, struct atom *
   }
 }
 
-void compute_backbone_torsion(struct rna* RNA) {
-  struct nuc* n = get_first_nuc(RNA);
+void compute_backbone_torsions(struct rna_data* RNA) {
+  for(int i=0; i<RNA->model_count; i++) {
+    compute_model_backbone_torsions(RNA->models[i]);
+  }
+}
+
+void compute_sugar_torsions(struct rna_data* RNA) {
+  for(int i=0; i<RNA->model_count; i++) {
+    compute_model_sugar_torsions(RNA->models[i]);
+  }
+}
+
+void compute_model_backbone_torsions(struct rna_model* RNA_model) {
+  struct nuc* n = get_first_nuc(RNA_model);
   int FIRST = 1;
-  while(before_end(RNA,n)) {
-    struct atom* p1 = prev_nuc_last_backbone_atom(RNA,n);
+  while(before_end(RNA_model,n)) {
+    struct atom* p1 = prev_nuc_last_backbone_atom(RNA_model,n);
     struct atom* p2 = get_first_backbone_atom(n);
     struct atom* p3 = next_atom(p2);
     struct atom* p4 = next_atom(p3);
@@ -678,8 +729,8 @@ void compute_backbone_torsion(struct rna* RNA) {
 	  NEXT_NUC++;
 	}
       } else {
-	if(before_end(RNA,next_nuc(RNA,n))) {
-	  p4 = next_nuc_first_backbone_atom(RNA,n);
+	if(before_end(RNA_model,next_nuc(RNA_model,n))) {
+	  p4 = next_nuc_first_backbone_atom(RNA_model,n);
 	  NEXT_NUC++;
 	} else {
 	  CONTINUE = 0;
@@ -687,13 +738,13 @@ void compute_backbone_torsion(struct rna* RNA) {
       }
       count++;
     }
-    n = next_nuc(RNA,n);
+    n = next_nuc(RNA_model,n);
   }
 }
 
-void compute_sugar_torsion(struct rna* RNA) {
-  struct nuc* n = get_first_nuc(RNA);  
-  while(before_end(RNA,n)) {
+void compute_model_sugar_torsions(struct rna_model* RNA_model) {
+  struct nuc* n = get_first_nuc(RNA_model);  
+  while(before_end(RNA_model,n)) {
     // sort atoms in bonded order
     sort_sugar_atoms(n);
     int count = 0;
@@ -703,67 +754,103 @@ void compute_sugar_torsion(struct rna* RNA) {
     struct atom* p4 = next_sugar_atom(p3);;
     while(count<5) {
       n->sta[count] = torsion1(p1,p2,p3,p4); // store torsion angle    
-      printf("%d %s: ",n->num,n->name);
-      printf("computing torsion for: %s %s %s %s -> ",p1->name,p2->name,p3->name,p4->name);
-      printf("%.2f\n",n->sta[count]);
       p1 = p2;
       p2 = p3;
       p3 = p4;
       p4 = next_sugar_atom(p3);
       count++;
     }
-    n = next_nuc(RNA,n);
+    n = next_nuc(RNA_model,n);
   }
 }
 
+void print_backbone_torsions(struct rna_data* RNA) {
+  char ext[] = ".backbone.txt";
+  char output_file[100];
+  strcpy(output_file,RNA->input_file_name);
+  strcat(output_file,ext);
+  FILE* OUTPUT = fopen(output_file,"w");  
 
-void print_backbone_torsion(struct rna* RNA) {
   char* angle_name[] = {"alpha","beta","gamma","delta","epsilon","zeta"};
-  struct nuc* n = get_first_nuc(RNA);
-  int FIRST = 1;
   /* header */
-  printf("pos\tnt");
-  for(int i=0; i<6; i++) {
-    printf("\t%s",angle_name[i]);
+  fprintf(OUTPUT,"model\tpos\tnt");
+  for(int j=0; j<6; j++) {
+    fprintf(OUTPUT,"\t%s",angle_name[j]);
   }
-  printf("\n");
-  /* data table */
-  while(before_end(RNA,n)) {
-    printf("%d\t%s",n->num,n->name);
-    for(int i=0; i<6; i++) {
-      printf("\t%.2f",n->bbta[i]);
+  fprintf(OUTPUT,"\n");
+  /* data table */  
+  for(int i=0; i<RNA->model_count; i++) {
+    struct nuc* n = get_first_nuc(RNA->models[i]);
+    int FIRST = 1;
+    while(before_end(RNA->models[i],n)) {
+      fprintf(OUTPUT,"%d\t%d\t%s",i,n->num,n->name);
+      for(int j=0; j<6; j++) {
+	fprintf(OUTPUT,"\t%.2f",n->bbta[j]);
+      }
+      fprintf(OUTPUT,"\n");
+      n = next_nuc(RNA->models[i],n);
     }
-    printf("\n");
-    n = next_nuc(RNA,n);
   }
+  fclose(OUTPUT);
 }
 
-/* Functions for extracting the RNA sequence */
+void print_sugar_torsions(struct rna_data* RNA) {  
+  char ext[] = ".sugar.txt";
+  char output_file[100];
+  strcpy(output_file,RNA->input_file_name);
+  strcat(output_file,ext);
+  FILE* OUTPUT = fopen(output_file,"w");  
 
-char* set_rna_sequence(struct rna* RNA) {
-  assert(RNA);
+  char* angle_name[] = {"v1","v2","v3","v4","v5"};
+  int len = 5;
+  /* header */
+  fprintf(OUTPUT,"model\tpos\tnt");
+  for(int j=0; j<len; j++) {
+    fprintf(OUTPUT,"\t%s",angle_name[j]);
+  }
+  fprintf(OUTPUT,"\n");
+  /* data table */
+  for(int i=0; i<RNA->model_count; i++) {
+    struct nuc* n = get_first_nuc(RNA->models[i]);
+    int FIRST = 1;  
+    while(before_end(RNA->models[i],n)) {
+      fprintf(OUTPUT,"%d\t%d\t%s",i,n->num,n->name);
+      for(int j=0; j<len; j++) {
+	fprintf(OUTPUT,"\t%.2f",n->sta[j]);
+      }
+      fprintf(OUTPUT,"\n");
+      n = next_nuc(RNA->models[i],n);
+    }
+  }
+  fclose(OUTPUT);  
+}
+
+/* Functions for extracting the RNA_model sequence */
+
+char* set_rna_model_sequence(struct rna_model* RNA_model) {
+  assert(RNA_model);
   char* sequence; 
-  if(RNA->length != 0) {
-    sequence = malloc(sizeof(char) * RNA->length);
-    struct nuc* n = RNA->sentinel->next;
+  if(RNA_model->length != 0) {
+    sequence = malloc(sizeof(char) * RNA_model->length);
+    struct nuc* n = RNA_model->sentinel->next;
     strcpy(sequence,"");
-    while(before_end(RNA,n)) {
+    while(before_end(RNA_model,n)) {
       strcat(sequence,n->name);
-      n = next_nuc(RNA,n);
+      n = next_nuc(RNA_model,n);
     }
   } else {
-    printf("Error: RNA has length zero.\n");
+    printf("Error: RNA_model has length zero.\n");
     exit(0);
   }
-  RNA->seq = sequence;
+  RNA_model->seq = sequence;
 }
 
-char* get_rna_sequence(struct rna* RNA) {
-  assert(RNA);
-  if(RNA->seq == NULL) {
-    set_rna_sequence(RNA);
-  } else if(strlen(RNA->seq) != RNA->length) {
-    set_rna_sequence(RNA);    
+char* get_rna_model_sequence(struct rna_model* RNA_model) {
+  assert(RNA_model);
+  if(RNA_model->seq == NULL) {
+    set_rna_model_sequence(RNA_model);
+  } else if(strlen(RNA_model->seq) != RNA_model->length) {
+    set_rna_model_sequence(RNA_model);    
   }
-  return RNA->seq;
+  return RNA_model->seq;
 }

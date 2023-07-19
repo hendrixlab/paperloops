@@ -12,8 +12,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "RNA_PDB.h"
-#include "RNA_molecule.h"
+#include "rna_pdb.h"
+#include "rna_data.h"
 
 /* FUNCTION PROTOTYPES */
 
@@ -29,10 +29,10 @@ int extract_nuc_num(char* line);
 
 char* extract_nuc_name(char* line);
 
-int get_model_count(FILE* F);
+int read_model_count(FILE* F);
 
-int* get_model_locs(FILE* F, int* model_count, int** model_locs);
+int* read_model_locs(FILE* F, struct rna_data* RNA);
 
-struct rna** read_pdb_file(char* file_name, int* model_count);
+struct rna_data* read_pdb_file(char* file_name);
 
 #endif
