@@ -15,12 +15,5 @@ int main(int argc, char *argv[]) {
   char* input_file_name = argv[1];
 
   struct rna_data* RNA = read_pdb_file(input_file_name);
-  
-  compute_backbone_torsions(RNA);
-  print_backbone_torsions(RNA);
-  compute_sugar_torsions(RNA);
-  print_sugar_torsions(RNA);
-  
-  //char* sequence = get_rna_sequence(RNA);
-  //printf("%s\n",sequence);
+  get_dinucleotides(RNA);
 }

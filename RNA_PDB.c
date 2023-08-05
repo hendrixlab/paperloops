@@ -1,4 +1,4 @@
-/*
+ /*
  * This library contains the definitions of structures and functions reading PDB files
  * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
  *
@@ -73,6 +73,11 @@ char* extract_nuc_name(char* line) {
   return nuc_name;
 }
 
+char extract_chain_id(char* line) {
+  char chain_id = line[21];
+  return chain_id;
+}
+
 int read_model_count(FILE* F) {
   char line[MAX_LINE_LENGTH];
   char rec_type[6]; // the max length for a record type is 6
@@ -132,6 +137,38 @@ int* read_model_locs(FILE* F, struct rna_data* RNA) {
   }
 }
 
+int read_chain_count(FILE* F, struct rna_data* RNA, int model_num) {
+  char line[MAX_LINE_LENGTH];
+  char rec_type[6]; // the max length for a record type is 6
+  fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
+  char prev_chain_id = '?';
+  int COUNT1 = 0;
+  int COUNT2 = 0; // second method of counting: double checking
+  while(fgets(line,MAX_LINE_LENGTH,F)) {
+    strncpy(rec_type,line,6);
+    if(strcmp(rec_type,"ATOM  ") == 0) {
+      char chain_id = extract_chain_id(line);
+      if(prev_chain_id == '?') {
+	prev_chain_id = chain_id;
+	COUNT1++; // add to count for first chain
+      }
+      if(prev_chain_id != chain_id) {
+	COUNT1++; // add for all other chains
+	prev_chain_id = chain_id;
+      }
+    } else if(strcmp(rec_type,"TER   ")) {
+      COUNT2++;
+    } else if(strcmp(rec_type,"ENDMDL") == 0) {
+      break;
+    }
+  }
+  if(COUNT1 != COUNT2) {
+    printf("chain counts don't match: %d %d\n",COUNT1,COUNT2);
+    exit(1);
+  }
+  return COUNT1;
+}
+
 struct rna_data* read_pdb_file(char* input_file_name) {
   FILE* F;
   char line[MAX_LINE_LENGTH];
@@ -144,18 +181,24 @@ struct rna_data* read_pdb_file(char* input_file_name) {
   }
 
   struct rna_data* RNA = create_rna_data(input_file_name);
-  // get the number and locations of each model
+  // get the number and locations of each model, allocate memory
   read_model_locs(F, RNA);
-
   allocate_rna_models(RNA);
-  for(int i=0; i< get_model_count(RNA); i++) {
+  
+  for(int model_num=0; model_num< get_model_count(RNA); model_num++) {
+    //int chain_count = read_model_chain_count(FILE,RNA,model_num); // get the number of chains for this model
+    struct rna_model* RNA_model = create_model(); // create RNA_model
     // loop through the model locations and read in data: 
-    fseek(F,get_model_loc(RNA,i),0);  // jump to the first ATOM line of model
-    // create RNA_model 
-    struct rna_model* RNA_model = create_rna_model();
+    fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
     while(fgets(line,MAX_LINE_LENGTH,F)) {
       strncpy(rec_type,line,6);
       if(strcmp(rec_type,"ATOM  ") == 0) {
+	char chain_id = extract_chain_id(line);
+	if(new_chain_id(RNA_model,chain_id)) {
+	  struct chain* chain = create_chain(chain_id);
+	  add_chain(RNA_model,chain);
+	  //printf("added new chain: %c\n",chain_id);
+	}
 	int nuc_num = extract_nuc_num(line);
 	char* nuc_name = extract_nuc_name(line);
 	if(new_nuc_num(RNA_model,nuc_num)) {
@@ -167,11 +210,16 @@ struct rna_data* read_pdb_file(char* input_file_name) {
 	double* r = extract_coord(line);
 	struct atom* a = create_atom(atom_num,atom_name,r);
 	add_atom(RNA_model,a);
+	//printf("added atom: %s\n",atom_name);
       } else if(strcmp(rec_type,"TER   ") == 0) {
-	break;
+	// expecting end of chain
+	;
+      } else if(strcmp(rec_type,"ENDMDL") == 0) {
+	break; // end of model
       }
     }
-    set_rna_model(RNA,i,RNA_model);
+    // check number of chains.
+    set_rna_model(RNA,model_num,RNA_model);    
   }
   fclose(F);
   return RNA;

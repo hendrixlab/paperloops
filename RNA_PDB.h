@@ -29,6 +29,8 @@ int extract_nuc_num(char* line);
 
 char* extract_nuc_name(char* line);
 
+char extract_chain_id(char* line);
+
 int read_model_count(FILE* F);
 
 int* read_model_locs(FILE* F, struct rna_data* RNA);
