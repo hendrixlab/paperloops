@@ -22,5 +22,8 @@ double get_angle(double *v, double* w);
 double argument(double x, double y);
 double* orthonormal_projection(double *v, double *w);
 double* cross(double* v, double* w);
+double* matvec_product(double** A, double* x);
+double** matmat_product(double** A, double** B);
+double** inverse(double** A);
 
 #endif

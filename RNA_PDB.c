@@ -1,4 +1,4 @@
- /*
+/*
  * This library contains the definitions of structures and functions reading PDB files
  * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
  *
@@ -13,6 +13,15 @@
 #include "rna_data.h"
 
 #define MAX_LINE_LENGTH 1000
+
+/*******************
+ * data structures *
+ *******************/
+
+struct split_text {
+  char** term;
+  int cols;
+};
 
 /* FUNCTIONS */
 
@@ -70,6 +79,7 @@ char* extract_nuc_name(char* line) {
     }
   }
   nuc_name[count] = '\0';
+  // NEED to map PSU to P and other HETATM nucleotides
   return nuc_name;
 }
 
@@ -170,11 +180,10 @@ int read_chain_count(FILE* F, struct rna_data* RNA, int model_num) {
 }
 
 struct rna_data* read_pdb_file(char* input_file_name) {
-  FILE* F;
   char line[MAX_LINE_LENGTH];
   char rec_type[6]; // the max length for a record type is 6
   
-  F = fopen(input_file_name,"r");
+  FILE* F = fopen(input_file_name,"r");
   if(F == NULL) {
     printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",input_file_name);
     exit(1);
@@ -192,7 +201,7 @@ struct rna_data* read_pdb_file(char* input_file_name) {
     fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
     while(fgets(line,MAX_LINE_LENGTH,F)) {
       strncpy(rec_type,line,6);
-      if(strcmp(rec_type,"ATOM  ") == 0) {
+      if((strcmp(rec_type,"ATOM  ") == 0)||(strcmp(rec_type,"HETATM") == 0)) {
 	char chain_id = extract_chain_id(line);
 	if(new_chain_id(RNA_model,chain_id)) {
 	  struct chain* chain = create_chain(chain_id);
@@ -203,7 +212,10 @@ struct rna_data* read_pdb_file(char* input_file_name) {
 	char* nuc_name = extract_nuc_name(line);
 	if(new_nuc_num(RNA_model,nuc_num)) {
 	  struct nuc* n = create_nuc(nuc_num,nuc_name);
-	  add_nuc(RNA_model,n);
+	  add_nuc(RNA_model,n);	  
+	  //printf("Adding: %c %d %s\n",chain_id,nuc_num,nuc_name);
+	  //set_chain_sequence(get_last_chain(RNA_model));
+	  //printf("Current: %s\n",get_chain_sequence(get_last_chain(RNA_model)));
 	}
 	int atom_num = extract_atom_num(line);
 	char* atom_name = extract_atom_name(line);
@@ -221,6 +233,73 @@ struct rna_data* read_pdb_file(char* input_file_name) {
     // check number of chains.
     set_rna_model(RNA,model_num,RNA_model);    
   }
+  // make an array copy of the linked list for faster access of base pairs
+  set_rna_nuc_array(RNA);
   fclose(F);
   return RNA;
+}
+
+/*****************************
+ * base pair reading methods *
+ *****************************/
+
+struct split_text*  split_line(char *line, char *delim) {
+  struct split_text* row = malloc(sizeof(struct split_text));
+  row->term = NULL;
+  int n = 0;
+
+  char *token = strtok(line, delim);
+  while( token != NULL ) {
+    row->term = realloc(row->term, (n+1)*sizeof(char*));
+    row->term[n] = token; 
+    token = strtok(NULL, delim);
+    n++;
+  }
+  row->cols = n;
+  return row;
+}
+
+int count_basepairs(FILE* F) {
+  char line[MAX_LINE_LENGTH];
+  int size = 0;
+  
+  while(fgets(line,MAX_LINE_LENGTH,F)) {
+    struct split_text* row = split_line(line," ");
+    if(row->cols >= 4) {
+      if((strcmp(row->term[2],"W")==0)&&(strcmp(row->term[3],"W")==0)&&(strcmp(row->term[4],"C")==0)) {
+	size++;
+      }
+    }
+  }
+  return size;
+}
+
+struct bp_array* read_basepair_file(char *basepair_file) {
+  char line[MAX_LINE_LENGTH];
+
+  FILE* F = fopen(basepair_file,"r");
+  if(F == NULL) {
+    printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",basepair_file);
+    exit(1);
+  }
+
+  int size = count_basepairs(F);
+  struct bp_array* bp_array = create_bp_array(size);
+  fseek(F,0,0);   // reset file
+
+  int count = 0;
+  while(fgets(line,MAX_LINE_LENGTH,F)) {
+    struct split_text* row = split_line(line," ");
+    if(row->cols >= 4) {
+      if((strcmp(row->term[2],"W")==0)&&(strcmp(row->term[3],"W")==0)&&(strcmp(row->term[4],"C")==0)) {	
+	struct split_text* bp1_info = split_line(row->term[0],":");
+	struct split_text* bp2_info = split_line(row->term[1],":");
+	struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[2]),atoi(bp2_info->term[2]));
+	//printf("%s %s %s %s\n",bp1_info->term[0],bp2_info->term[0],bp1_info->term[2],bp2_info->term[2]);
+	set_bp(bp_array,bp,count);
+	count++;
+      }
+    }
+  }
+  return bp_array;
 }

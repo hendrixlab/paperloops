@@ -15,6 +15,10 @@
 #include "rna_pdb.h"
 #include "rna_data.h"
 
+/* DATA TYPES */
+
+struct split_text;
+
 /* FUNCTION PROTOTYPES */
 
 double* extract_coord(char* line);
@@ -36,5 +40,11 @@ int read_model_count(FILE* F);
 int* read_model_locs(FILE* F, struct rna_data* RNA);
 
 struct rna_data* read_pdb_file(char* file_name);
+
+struct split_text*  split_line(char *line, char *delim);
+
+int count_basepairs(FILE* F);
+
+struct bp_array* read_basepair_file(char *stems_file);
 
 #endif

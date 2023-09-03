@@ -1,0 +1,7 @@
+12:03:30. 345947
+input PDB file name: data/4ybb_23S.pdb
+input base pair file name: data/4ybb_23S.pdb.base_pairs.txt
+Found 1 models.
+found 2896 dinucleotide pairs.
+found 885 base pairs.
+12:03:30. 664037
