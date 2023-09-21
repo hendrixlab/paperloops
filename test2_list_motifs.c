@@ -1,6 +1,7 @@
 #include "rna_pdb.h"
 #include "rna_data.h"
 #include "transform.h"
+#include "motifs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -20,8 +21,16 @@ int main(int argc, char *argv[]) {
   struct rna_data* RNA = read_pdb_file(pdb_file_name);
   struct bp_array* basepairs = read_basepair_file(basepair_file_name);
   
+  printf("Building transform libraries.\n");
+  printf("backbone libraries:\n");
   build_backbone_transform_library(RNA);
+  printf("basepair libraries:\n");
   build_basepair_transform_library(RNA,basepairs);
+  printf("completed.\n");
+
+  int N_loops = 5;
+  int L_max = 10;
+  struct motif_group** M = build_motif_list(N_loops,L_max);
   
   return 0;
 }

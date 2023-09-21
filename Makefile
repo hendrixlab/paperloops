@@ -1,16 +1,22 @@
 CC=cc --std=c99 -g
 
-test: test.c rna_data.o transform.o rna_pdb.o vectorfun.o
-	$(CC) test.c rna_data.o rna_pdb.o transform.o vectorfun.o -o test -lm
+test2_list_motifs: test2_list_motifs.c rna_data.o transform.o rna_pdb.o motifs.o vectorfun.o 
+	$(CC) test2_list_motifs.c rna_data.o rna_pdb.o transform.o motifs.o vectorfun.o -o test2_list_motifs -lm
 
-transform.o: transform.c transform.h rna_data.o vectorfun.o
-	$(CC) -c transform.c rna_data.o vectorfun.o -o transform.o -lm
+test1_build_libraries: test1_build_libraries.c rna_data.o transform.o rna_pdb.o motifs.o vectorfun.o 
+	$(CC) test1_build_libraries.c rna_data.o rna_pdb.o transform.o motifs.o vectorfun.o -o test1_build_libraries -lm
+
+transform.o: transform.c transform.h rna_data.o motifs.o vectorfun.o
+	$(CC) -c transform.c rna_data.o vectorfun.o motifs.o -o transform.o -lm
 
 rna_pdb.o: rna_pdb.c rna_pdb.h rna_data.o vectorfun.o
 	$(CC) -c rna_pdb.c rna_data.o transform.o vectorfun.o -o rna_pdb.o -lm
 
-rna_data.o: rna_data.c rna_data.h vectorfun.o
-	$(CC) -c rna_data.c vectorfun.o -o rna_data.o -lm
+rna_data.o: rna_data.c rna_data.h vectorfun.o motifs.o
+	$(CC) -c rna_data.c vectorfun.o motifs.o -o rna_data.o -lm
+
+motifs.o: motifs.c motifs.h
+	$(CC) -c motifs.c -o motifs.o
 
 vectorfun.o: vectorfun.c vectorfun.h
 	$(CC) -c vectorfun.c -o vectorfun.o
@@ -18,6 +24,6 @@ vectorfun.o: vectorfun.c vectorfun.h
 clean:
 	rm -f rna_pdb.o rna_data.o transform.o vectorfun.o
 	rm -rf read_rna_pdb.dSYM
-	rm -f test
+	rm -f test1_build_libraries test2_list_motifs
 	rm -f *sugar.txt *backbone.txt
 	rm -f *~
