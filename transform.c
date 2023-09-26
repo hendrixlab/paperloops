@@ -67,7 +67,7 @@ void resize_library(struct library* transform_set) {
   struct transform** new_data = malloc(new_cap * sizeof(struct transform*));
   assert(new_data);
   // copy over the data to new allocation
-  for (int i = 0; i < transform_set->len; i++) {
+  for(int i = 0; i < transform_set->len; i++) {
     new_data[i] = transform_set->data[i];
   }
   // free the old data, update

@@ -30,7 +30,20 @@ int main(int argc, char *argv[]) {
 
   int N_loops = 5;
   int L_max = 10;
-  struct motif_group** M = build_motif_list(N_loops,L_max);
-  
+  struct motif_group*** M = build_motif_list(N_loops,L_max);
+  for(int n=1; n<=N_loops; n++) {
+    for(int L=0; L<=L_max; L++) {
+      // these should be the necklaces for each n,L
+      for(int i=0; i<get_motif_group_count(M[n][L]); i++) {
+	struct motif* m = get_motif(M[n][L],i);
+	printf("(N=%d,L=%d) %d - ",n,L,i);
+	while(m) {
+	  print_motif(m,' ');
+	  m = get_next_motif(m);
+	}
+	printf("\n");
+      }
+    }
+  }
   return 0;
 }

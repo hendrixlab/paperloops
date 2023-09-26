@@ -40,6 +40,7 @@ int get_new_id(int id, int new_num, int new_loop, int L_max);
 int compute_motif_id(struct motif* motif, int L_max);
 struct motif* expand_motif(struct motif* motif, int new_loop, int L_max);
 struct motif* rotate_motif(struct motif* motif, int L_max);
+struct motif* get_next_motif(struct motif* motif);
 
 /*
  * Tools for building/adding/removing elements from motif_group
@@ -51,7 +52,7 @@ int get_motif_group_size(struct motif_group* motif_group);
 int get_motif_group_count(struct motif_group* motif_group);
 struct motif* get_motif(struct motif_group* motif_group, int idx);
 void add_motif(struct motif_group* motif_group, struct motif* m);
-struct motif_group** build_motif_list(int N_loops, int L_max);
+struct motif_group*** build_motif_list(int N_loops, int L_max);
 
 #endif
 

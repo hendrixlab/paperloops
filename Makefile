@@ -22,7 +22,7 @@ vectorfun.o: vectorfun.c vectorfun.h
 	$(CC) -c vectorfun.c -o vectorfun.o
 
 clean:
-	rm -f rna_pdb.o rna_data.o transform.o vectorfun.o
+	rm -f rna_pdb.o rna_data.o transform.o vectorfun.o motifs.o
 	rm -rf read_rna_pdb.dSYM
 	rm -f test1_build_libraries test2_list_motifs
 	rm -f *sugar.txt *backbone.txt
