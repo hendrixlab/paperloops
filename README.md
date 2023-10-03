@@ -1,7 +1,10 @@
 author: David Hendrix
 email: david.hendrix@oregonstate.edu
 
-This is some early code on parsing PDB files.
+based on/derived from code from Rhiju Das (C) 2020 https://github.com/rhiju/toyfold3
+
+
+Statistical Computation of RNA Overlapping Polymer Probability for Loop Energies (scropple)
 
 Compile:
 
@@ -9,6 +12,7 @@ make clean
 make
 
 Run example:
-./test pdb6w3m.ent
+
+./test2_list_motifs data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt [Linux@anybase scropple]$ 
 
 etc
