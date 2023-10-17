@@ -2,7 +2,6 @@
 #include "rna_data.h"
 #include "transform.h"
 #include "motifs.h"
-#include "necklace.h"
 
 #include <stdio.h>
 #include <string.h>
