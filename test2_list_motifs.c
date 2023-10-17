@@ -2,6 +2,7 @@
 #include "rna_data.h"
 #include "transform.h"
 #include "motifs.h"
+#include "necklace.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -28,21 +29,28 @@ int main(int argc, char *argv[]) {
   build_basepair_transform_library(RNA,basepairs);
   printf("completed.\n");
 
-  int N_loops = 5;
+  int N_loops = 8;
   int L_max = 10;
+  // actual motifs built with efficient algorithm
   struct motif_group*** M = build_motif_list(N_loops,L_max);
+  // theoretical lengths based on equation
+  int** N = necklace_counts_fixed_length(N_loops,L_max);
+
   for(int n=1; n<=N_loops; n++) {
     for(int L=0; L<=L_max; L++) {
-      // these should be the necklaces for each n,L
-      for(int i=0; i<get_motif_group_count(M[n][L]); i++) {
+      int count = get_motif_group_count(M[n][L]);
+      printf("N(n=%d,L=%d)=%d, count=%d\n",n,L,N[n][L],count);
+      /*
+      for(int i=0; i<count; i++) {
+	printf("%d-",i);
 	struct motif* m = get_motif(M[n][L],i);
-	printf("(N=%d,L=%d) %d - ",n,L,i);
 	while(m) {
 	  print_motif(m,' ');
 	  m = get_next_motif(m);
 	}
 	printf("\n");
       }
+      */
     }
   }
   return 0;

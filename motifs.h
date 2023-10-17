@@ -19,14 +19,28 @@
  * data structures for the transform and for the library of transforms
  */
 
+struct list;
 struct motif;
 struct motif_group;
-
+struct motif_library;
+struct steptypes;
 
 /*
  * Tools for building/adding/removing to a motif
  */
 
+int* create_array(int len, int val);
+struct list* create_list();
+void list_append(struct list* list, int n);
+int list_length(struct list* list);
+void print_list(struct list* list, char* title);
+struct list* get_divisors(int n);
+struct list*  get_primes(int n);
+int mobius(int n, struct list*  primes);
+int binomial(int n, int k);
+int count_necklaces_fixed_sum(int n, int L);
+int aperiodic_necklace_counts_fixed_length(int n, int L, struct list* divisors, struct list* primes);
+int** necklace_counts_fixed_length(int N_loops, int L_max);
 struct motif* create_motif(int num);
 void initialize_motif(struct motif* motif, int loop);
 void set_motif_loop(struct motif* motif, int idx, int loop);
@@ -53,6 +67,13 @@ int get_motif_group_count(struct motif_group* motif_group);
 struct motif* get_motif(struct motif_group* motif_group, int idx);
 void add_motif(struct motif_group* motif_group, struct motif* m);
 struct motif_group*** build_motif_list(int N_loops, int L_max);
+
+/***********************
+ * Tools for Steptypes *
+ ***********************/
+
+struct steptypes* create_steptypes(int length);
+struct steptypes* motif_to_steptypes(struct motif* motif);
 
 #endif
 
