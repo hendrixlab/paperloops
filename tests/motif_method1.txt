@@ -1,0 +1,102 @@
+[Linux@anybase scropple]$ date +"%T. %6N" ; ./test2_list_motifs data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt ; date +"%T. %6N"
+14:12:47. 273887
+input PDB file name: data/4ybb_23S.pdb
+input base pair file name: data/4ybb_23S.pdb.base_pairs.txt
+Found 1 models.
+creating nuc_array of size 2904
+Building transform libraries.
+backbone libraries:
+found 2896 dinucleotide pairs.
+basepair libraries:
+found 885 base pairs.
+completed.
+N(n=1,L=0)=1, count=0
+N(n=1,L=1)=1, count=0
+N(n=1,L=2)=1, count=0
+N(n=1,L=3)=1, count=0
+N(n=1,L=4)=1, count=0
+N(n=1,L=5)=1, count=0
+N(n=1,L=6)=1, count=0
+N(n=1,L=7)=1, count=0
+N(n=1,L=8)=1, count=0
+N(n=1,L=9)=1, count=0
+N(n=1,L=10)=1, count=0
+N(n=2,L=0)=1, count=1
+N(n=2,L=1)=1, count=1
+N(n=2,L=2)=2, count=2
+N(n=2,L=3)=2, count=2
+N(n=2,L=4)=3, count=3
+N(n=2,L=5)=3, count=3
+N(n=2,L=6)=4, count=4
+N(n=2,L=7)=4, count=4
+N(n=2,L=8)=5, count=5
+N(n=2,L=9)=5, count=5
+N(n=2,L=10)=6, count=6
+N(n=3,L=0)=1, count=1
+N(n=3,L=1)=1, count=1
+N(n=3,L=2)=2, count=2
+N(n=3,L=3)=4, count=4
+N(n=3,L=4)=5, count=5
+N(n=3,L=5)=7, count=7
+N(n=3,L=6)=10, count=10
+N(n=3,L=7)=12, count=12
+N(n=3,L=8)=15, count=15
+N(n=3,L=9)=19, count=19
+N(n=3,L=10)=22, count=22
+N(n=4,L=0)=1, count=1
+N(n=4,L=1)=1, count=1
+N(n=4,L=2)=3, count=3
+N(n=4,L=3)=5, count=5
+N(n=4,L=4)=10, count=10
+N(n=4,L=5)=14, count=14
+N(n=4,L=6)=22, count=22
+N(n=4,L=7)=30, count=30
+N(n=4,L=8)=43, count=43
+N(n=4,L=9)=55, count=55
+N(n=4,L=10)=73, count=73
+N(n=5,L=0)=1, count=1
+N(n=5,L=1)=1, count=1
+N(n=5,L=2)=3, count=3
+N(n=5,L=3)=7, count=7
+N(n=5,L=4)=14, count=14
+N(n=5,L=5)=26, count=26
+N(n=5,L=6)=42, count=42
+N(n=5,L=7)=66, count=66
+N(n=5,L=8)=99, count=99
+N(n=5,L=9)=143, count=143
+N(n=5,L=10)=201, count=201
+N(n=6,L=0)=1, count=1
+N(n=6,L=1)=1, count=1
+N(n=6,L=2)=4, count=4
+N(n=6,L=3)=10, count=10
+N(n=6,L=4)=22, count=22
+N(n=6,L=5)=42, count=42
+N(n=6,L=6)=80, count=80
+N(n=6,L=7)=132, count=132
+N(n=6,L=8)=217, count=217
+N(n=6,L=9)=335, count=335
+N(n=6,L=10)=504, count=504
+N(n=7,L=0)=1, count=1
+N(n=7,L=1)=1, count=1
+N(n=7,L=2)=4, count=4
+N(n=7,L=3)=12, count=12
+N(n=7,L=4)=30, count=30
+N(n=7,L=5)=66, count=66
+N(n=7,L=6)=132, count=132
+N(n=7,L=7)=246, count=246
+N(n=7,L=8)=429, count=429
+N(n=7,L=9)=715, count=715
+N(n=7,L=10)=1144, count=1144
+N(n=8,L=0)=1, count=1
+N(n=8,L=1)=1, count=1
+N(n=8,L=2)=5, count=5
+N(n=8,L=3)=15, count=15
+N(n=8,L=4)=43, count=43
+N(n=8,L=5)=99, count=99
+N(n=8,L=6)=217, count=217
+N(n=8,L=7)=429, count=429
+N(n=8,L=8)=810, count=810
+N(n=8,L=9)=1430, count=1430
+N(n=8,L=10)=2438, count=2438
+14:12:47. 841459
+

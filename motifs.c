@@ -15,7 +15,7 @@
  * data structures for the transform and for the library of transforms
  */
 
-// this is just a dynamic array of "int"s
+// this is just a dynamic array of "int"s, used to store primes and divisors
 struct list {
   int* data;
   int len;
@@ -101,6 +101,19 @@ void print_list(struct list* list, char* title) {
   printf("\n");
 }
 
+int compare( const void* a, const void* b) {
+  int int_a = * ( (int*) a );
+  int int_b = * ( (int*) b );
+
+  if(int_a > int_b) {
+    return 1;
+  } else if(int_a < int_b) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
+
 /*************************************************************
  * Mathematical functions needed for enumerating loop motifs *
  *************************************************************/
@@ -183,7 +196,6 @@ int binomial(int n, int k) {
   }
   return binomial(n-1, k-1) + binomial(n-1, k);
 }
-
 
 /*****************************************************
  * Tools for theoretical enumeration of loop motifs *
@@ -302,7 +314,7 @@ int compute_motif_id(struct motif* motif, int L_max) {
   int new_id = 0;
   int num = get_motif_num(motif);
   for(int n=0; n<num; n++) {
-    new_id += get_motif_loop(motif,n)*pow(L_max+1,n);
+    new_id += get_motif_loop(motif,n)*pow(L_max+1,num-1-n);
   }
   return new_id;
 }
@@ -317,12 +329,12 @@ struct motif* expand_motif(struct motif* motif, int new_loop, int L_max) {
   int new_id = get_new_id(id,new_num,new_loop,L_max);
   set_motif_id(new_motif,new_id);
 
-  set_motif_loop(new_motif,0,new_loop); // add the new loop
 
   for(int i=0;i<num;i++) { // copy the old motif
     int loop = get_motif_loop(motif,i);
-    set_motif_loop(new_motif,i+1,loop);
+    set_motif_loop(new_motif,i,loop);
   }
+  set_motif_loop(new_motif,num,new_loop); // add the new loop at i = num = new_num-1
   
   return new_motif;
 }
@@ -469,6 +481,55 @@ struct motif_group*** build_motif_list(int N_loops, int L_max) {
   // build motif_group structure, initialize with singleton motifs:
   struct motif_group** motif_list = create_motif_list(N_loops,L_max);  
 
+  struct list* prev_motif_ids = create_list();
+  for(int L=0;L<=L_max;L++) {
+    list_append(prev_motif_ids,L);
+  }
+  
+  // recursively build motif_lib for different lengths    
+  for(int n=2;n<=N_loops;n++) { // create multi-junction loops 
+    int new_size = 1 + L_max * pow(L_max+1,n-1); // 1 + largest possible id for n loops that add up to L_max or less
+    motif_list[n] = create_motif_group(new_size);
+    struct list* motif_ids = create_list();
+    for(int i=0;i<list_length(prev_motif_ids);i++) { // id of n-1 group
+      int id = prev_motif_ids->data[i];
+      struct motif* motif = get_motif(motif_list[n-1],id);
+      int sum = get_motif_sum(motif);
+      for(int L=0;L<=L_max-sum;L++) {
+	int new_id = get_new_id(id,n,L,L_max);
+	if(motif_empty(motif_list[n],new_id)) { // only add the new motif if it is not filled yet.
+	  int L_tot = sum + L;
+	  struct motif* new_motif = expand_motif(motif,L,L_max);
+	  add_motif(motif_list[n],new_motif);
+	  list_append(motif_ids,new_id); // append the id of each motif
+	  append_motif(motif_lib[n][L_tot],new_motif); // only append the representative rotation
+	  for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has n rotations
+	    struct motif* prev_motif = new_motif; // init. prev_motif to lexicographically lowest motif
+	    new_motif = rotate_motif(new_motif,L_max); // first rotation
+	    int new_id = get_motif_id(new_motif);
+	    if(motif_empty(motif_list[n],new_id)) { // only add if it is not visited/stored yet
+	      add_motif(motif_list[n],new_motif);
+	      list_append(motif_ids,new_id); // append the id of each motif
+	      set_next_motif(prev_motif,new_motif); // attach the rotation 
+	    }
+	  }
+	}
+      }
+    }
+    qsort(motif_ids->data,list_length(motif_ids),sizeof(int),compare);
+    prev_motif_ids = motif_ids;
+  }
+  return motif_lib;
+}
+
+/* 
+// original, slightly slower method for build_motif_list 
+struct motif_group*** build_motif_list(int N_loops, int L_max) {
+  // build motif library
+  struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max);
+  // build motif_group structure, initialize with singleton motifs:
+  struct motif_group** motif_list = create_motif_list(N_loops,L_max);  
+
   // recursively build motif_lib for different lengths    
   for(int n=2;n<=N_loops;n++) { // create multi-junction loops 
     int new_size = 1 + L_max * pow(L_max+1,n-1); // 1 + largest possible id for n loops that add up to L_max or less
@@ -501,6 +562,7 @@ struct motif_group*** build_motif_list(int N_loops, int L_max) {
   }
   return motif_lib;
 }
+ */
 
 void print_motif_lib_counts(struct motif_group*** motif_lib, int N_loops, int L_max) {
   for(int n=0; n<N_loops; n++) {
@@ -522,20 +584,35 @@ struct steptypes* create_steptypes(int length) {
   return steptypes;  
 }
 
+int steptypes_length(struct steptypes* steptypes) {
+  assert(steptypes);
+  return steptypes->length;
+}
+
+char* steptypes_get(struct steptypes* steptypes, int idx) {
+  assert(steptypes);
+  return steptypes->steps[idx];
+}
+
+void steptypes_set(struct steptypes* steptypes, int idx, char* step) {
+  assert(steptypes);
+  steptypes->steps[idx] = step;
+}
+
 struct steptypes* motif_to_steptypes(struct motif* motif) {
   int num = get_motif_num(motif);
   int sum = get_motif_sum(motif);
   struct steptypes* steptypes = create_steptypes(num+sum);
   int count = 0;
-  steptypes->steps[count] = "bp";
+  steptypes_set(steptypes,count,"bp");
   count++;
   for(int i=0; i<num; i++) {    
     for(int j=0; j<motif->loop[i]; j++) {
-      steptypes->steps[count] = "bb";
+      steptypes_set(steptypes,count,"bb");
       count++;
     }
     if(i < num-1) {
-      steptypes->steps[count] = "bp";
+      steptypes_set(steptypes,count,"bb");
       count++;
     }
   }

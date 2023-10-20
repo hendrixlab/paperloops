@@ -39,7 +39,6 @@ int main(int argc, char *argv[]) {
     for(int L=0; L<=L_max; L++) {
       int count = get_motif_group_count(M[n][L]);
       printf("N(n=%d,L=%d)=%d, count=%d\n",n,L,N[n][L],count);
-      /*
       for(int i=0; i<count; i++) {
 	printf("%d-",i);
 	struct motif* m = get_motif(M[n][L],i);
@@ -49,7 +48,6 @@ int main(int argc, char *argv[]) {
 	}
 	printf("\n");
       }
-      */
     }
   }
   return 0;

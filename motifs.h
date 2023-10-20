@@ -73,6 +73,9 @@ struct motif_group*** build_motif_list(int N_loops, int L_max);
  ***********************/
 
 struct steptypes* create_steptypes(int length);
+int steptypes_length(struct steptypes* steptypes);
+char* steptypes_get(struct steptypes* steptypes, int idx);
+void steptypes_set(struct steptypes* steptypes, int idx, char* step);
 struct steptypes* motif_to_steptypes(struct motif* motif);
 
 #endif

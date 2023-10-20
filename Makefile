@@ -1,4 +1,5 @@
 CC=cc --std=c99 -g
+all: test1_build_libraries test2_list_motifs
 
 test2_list_motifs: test2_list_motifs.c rna_data.o transform.o rna_pdb.o motifs.o vectorfun.o
 	$(CC) test2_list_motifs.c rna_data.o rna_pdb.o transform.o motifs.o vectorfun.o -o test2_list_motifs -lm

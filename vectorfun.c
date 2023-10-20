@@ -28,7 +28,11 @@ double** create_matrix() {
   matrix[2] = malloc(3*sizeof(double));
   for(int i=0; i<3; i++) {
     for(int j=0; j<3; j++) {
-      matrix[i][j] = 0.0;
+      if(i == j) {
+	matrix[i][j] = 1.0;
+      } else {
+	matrix[i][j] = 0.0;
+      }
     }
   }
   return matrix;
@@ -49,6 +53,15 @@ double* subtract(double* v, double* w) {
   result[2] = v[2] - w[2];
   return result;
 }
+
+double* negate(double *v) {
+  double* result = create_vector();
+  result[0] = -v[0];
+  result[1] = -v[1];
+  result[2] = -v[2];
+  return result;
+}
+
 
 double dot(double* v, double* w) {
   assert(v && w);
@@ -134,3 +147,15 @@ double** inverse(double** A) {
   }
   return inv;
 }
+
+double** transpose(double** A) {
+  double** A_Tr = create_matrix();
+  
+  for(int i=0;i<3;i++){
+    for(int j=0;j<3;j++) {
+      A_Tr[i][j] = A[j][i];
+    }  
+  }
+  return A_Tr;
+}
+
