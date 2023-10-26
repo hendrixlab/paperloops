@@ -14,6 +14,8 @@
 #include "motifs.h"
 #include "vectorfun.h"
 
+//const double pi = 3.1415926535898;
+
 /*
  * data structures for the transform and for the library of transforms
  */
@@ -24,8 +26,9 @@ struct frame {
 };
 
 struct transform {
-  double* t;
-  double** R;
+  double* t; // translation
+  double** R; // rotation
+  double* EV; // Euler vector
 };
 
 struct library {
@@ -153,6 +156,7 @@ struct transform* create_transform() {
   struct transform* T = malloc(sizeof(struct transform));
   T->t = create_vector(); // vector of zeros, placeholder
   T->R = create_matrix(); // identity matrix, placeholder
+  T->EV = create_vector(); // Euler vector, initially matrix of zeros
   return T;
 }
 
@@ -164,6 +168,10 @@ struct transform* compute_transform(struct frame* f1, struct frame* f2) {
   return T;
 }
 
+struct transform* add_euler_vector(struct transform* T) {
+  T->EV = compute_euler_vector(T->R);  
+}
+
 struct transform* apply_transform(struct transform* x1, struct transform* T) {
   struct transform* x2 = create_transform();
   x2->t = add(x1->t,matvec_product(x1->R,T->t));
@@ -173,7 +181,7 @@ struct transform* apply_transform(struct transform* x1, struct transform* T) {
 
 struct transform* reverse_transform(struct transform* T) {
   struct transform* T_rev = create_transform();
-  T_rev->t = matvec_product(inverse(T->R),negate(T->t));;
+  T_rev->t = matvec_product(inverse(T->R),scale_vector(T->t,-1.0)); // transpose should work and seems faster
   T_rev->R = inverse(T->R);
 }
 
@@ -281,7 +289,8 @@ struct library* get_pts_forward(struct steptypes* steps, struct library* bb_lib,
   struct library* pts_fwd = create_library(); // create the library to store the points
   for(int i=0; i<size; i++) {
     struct library* trace = get_random_trace(steps,bb_lib,bp_lib);
-    struct transform* x = get_transform(trace,-1); // store the last point
+    struct transform* x = get_transform(trace,-1); // get the last transform in the trace
+    add_euler_vector(x);
     append_transform(pts_fwd,x);
   }
   return pts_fwd;
@@ -293,9 +302,113 @@ struct library* get_pts_reverse(struct steptypes* steps, struct library* bb_lib,
   for(int i=0; i<library_size(pts_fwd); i++) {
     struct transform* T = get_transform(pts_fwd,i);
     struct transform* T_rev = reverse_transform(T);
+    add_euler_vector(T_rev);
     append_transform(pts_rev,T_rev);
   }
 }
 
+/*************
+ * KDE tools *
+ *************/
 
+double get_T6_value(struct transform* T, int i) {
+  if(0 <= i && i < 3) {
+    return T->t[i];
+  } else if(3 <= i && i < 6) { // hard-coded b/c should never be other than 6D
+    return T->EV[i-3];
+  } else {
+    printf("Unexpected value in get_T6_value: %d",i);
+    exit(0);
+  }
+}
 
+double* get_kde_bandwidth(struct library* pts) {
+  int d = 6; // assuming 6D coordinates
+  double* h = malloc(sizeof(double)*d);
+  double* sum = malloc(sizeof(double)*d);
+  double* sumSquares = malloc(sizeof(double)*d);
+  double* stdDev = malloc(sizeof(double)*d);
+  
+  // calculate std-dev, maybe should be a subroutine? 
+  for(int j=0; j<d; j++) {
+    sum[j] = 0.0;
+    sumSquares[j] = 0.0;
+  }
+  int n = library_size(pts);
+  for(int i=0; i<n; i++) {
+    struct transform* T = get_transform(pts,i);
+    for(int j=0; j<d; j++) {
+      double val = get_T6_value(T,j);
+      sum[j] += val;
+      sumSquares[j] += val*val;	
+    }
+  }
+  // calculate bandwidth and final std-dev calc
+  for(int j=0; j<d; j++) {
+    stdDev[j] = sqrt((sumSquares[j] - sum[j]*sum[j]/n)/(n-1));
+    h[j] = pow(4/(d+2)/n,1/(n+4))*stdDev[j];
+  }  
+  return h;
+}
+
+double get_kde_probability(struct transform* x, struct library* pts, double* bandwidth) {
+  // evaluate the probability f(x) of point x using the data in pts
+  int d = 6;
+  int n = library_size(pts);
+  
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    det_bw *= bandwidth[j];
+  }
+  double coeff = sqrt(pow(1.0/(2.0*pi),d)/det_bw);
+  
+  double sum = 0.0;
+  for(int i=0; i<n; i++) {
+    struct transform* pts_T = get_transform(pts,i);
+    double expsum = 0.0;
+    for(int j=0; j<d; j++) {
+      double x_val = get_T6_value(x,j);
+      double pts_val = get_T6_value(pts_T,j);
+      double val = x_val - pts_val;
+      expsum += val*val/bandwidth[j];
+    }
+    sum += coeff*exp(-expsum/2.0);
+  }
+  return sum/n;
+}
+
+/*********************************
+ * Effective Concentration C_eff * 
+ *********************************/
+
+double* get_effective_concentration(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
+  int length = steptypes_length(steps);
+  int halfway = length/2; // should be floored b/c ints
+
+  struct steptypes* steps_fwd = steptypes_splice(steps,0,halfway-1);
+  struct library* pts_fwd =  get_pts_forward(steps_fwd,bb_lib,bp_lib,size);
+  
+  struct steptypes* steps_rev = steptypes_splice(steps,halfway,length-1);
+  struct library* pts_rev = get_pts_reverse(steps_rev,bb_lib,bp_lib,size);
+
+  double* h = get_kde_bandwidth(pts_fwd);
+  
+  double C_eff_sum  = 0.0;
+  double C_eff_sumSquares = 0.0;
+  int N = library_size(pts_rev);
+  for(int i=0; i<N; i++) {
+    struct transform* x = get_transform(pts_rev,i);
+    double p = get_kde_probability(x, pts_fwd, h);
+    double v = norm(x->EV);
+    double w = 1.0;
+    if(v != 0.0) {
+      double sqrt_w = sin(v/2)/(v/2);
+      w = sqrt_w*sqrt_w;
+    }
+    double C_eff_sample = p/(w/(8*pi*pi))/(6.022e23/1e27);
+    C_eff_sum += C_eff_sample;
+    C_eff_sumSquares += C_eff_sample*C_eff_sample;
+  }
+  double C_eff_mean = C_eff_sum / N;
+  double C_eff_stdDev = sqrt((C_eff_sumSquares - C_eff_sum*C_eff_sum/N)/(N-1));
+}

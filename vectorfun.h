@@ -12,12 +12,13 @@
 #include <stdlib.h>
 #include <assert.h>
 
+extern const double pi;
 
 double* create_vector();
 double** create_matrix();
 double* add(double* v, double* w);
 double* subtract(double* v, double* w);
-double* negate(double *v);
+double* scale_vector(double *v, double scalar);
 double dot(double* v, double* w);
 double norm(double *v);
 double* normalize(double *v);
@@ -30,4 +31,7 @@ double* matvec_product(double** A, double* x);
 double** matmat_product(double** A, double** B);
 double** inverse(double** A);
 double** transpose(double** A);
+double* compute_euler_angles(double** R);
+double* compute_euler_vector(double** R);
+
 #endif

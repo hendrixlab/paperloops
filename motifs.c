@@ -599,6 +599,15 @@ void steptypes_set(struct steptypes* steptypes, int idx, char* step) {
   steptypes->steps[idx] = step;
 }
 
+struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end) {
+  struct steptypes* substeps = create_steptypes(end-start+1); // positions are inclusive
+  for(int i=start; i<=end; i++) {
+    char* step = steptypes_get(steptypes,i);
+    steptypes_set(substeps,i,step);
+  }
+  return substeps;
+}
+
 struct steptypes* motif_to_steptypes(struct motif* motif) {
   int num = get_motif_num(motif);
   int sum = get_motif_sum(motif);

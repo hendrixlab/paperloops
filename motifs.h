@@ -76,6 +76,7 @@ struct steptypes* create_steptypes(int length);
 int steptypes_length(struct steptypes* steptypes);
 char* steptypes_get(struct steptypes* steptypes, int idx);
 void steptypes_set(struct steptypes* steptypes, int idx, char* step);
+struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end);
 struct steptypes* motif_to_steptypes(struct motif* motif);
 
 #endif
