@@ -1,4 +1,4 @@
- /*
+/*
  * This library contains the definitions of structures and functions related to loop motifs
  * defining the lengths of each loop in a multiloop structure. e.g. [3,4,2,1]
  *
@@ -55,7 +55,7 @@ struct steptypes {
 
 
 // just a basic array of repeated "val" entries
-int* create_array(int len, int val) {
+int* create_rep_array(int len, int val) {
   int* array = malloc(len * sizeof(int));
   for(int i=0; i<len; i++) {
     array[i] = val;
@@ -120,7 +120,7 @@ int compare( const void* a, const void* b) {
 
 struct list* get_divisors(int n) {
   // return the divisors of n
-  int* divides = create_array(n+1,0);
+  int* divides = create_rep_array(n+1,0);
 
   int total = 0;
   for(int i=1; i<=n; i++) {
@@ -141,7 +141,7 @@ struct list* get_divisors(int n) {
 
 struct list* get_primes(int n) {
   // compute an array of primes from 2 to n.
-  int* prime = create_array(n+1,1);
+  int* prime = create_rep_array(n+1,1);
 
   for(int i=2; i<=sqrt(n); i++) {
     if(prime[i]) {
@@ -257,6 +257,7 @@ struct motif* create_motif(int num) {
 }
 
 void initialize_motif(struct motif* motif, int loop) {
+  // initialize a singleton n=1 motif. only works for these
   set_motif_loop(motif,0,loop);
   set_motif_id(motif,loop);
 }
@@ -293,15 +294,28 @@ int get_motif_sum(struct motif* motif) {
   return sum;
 }
 
-int print_motif(struct motif* motif, char c) {
+void print_motif(struct motif* motif, char c) {
   int n = get_motif_num(motif);
-  printf("motif %d: (",motif->id);
+  //printf("%d\t(",motif->id);
   for(int i=0; i<n; i++) {
     printf("%d",motif->loop[i]);
     if(i==n-1) {
-      printf(")%c",c);
+      printf("%c",c);
     } else {
-      printf(", ");
+      printf("-");
+    }
+  }  
+}
+
+void fprint_motif(FILE* F, struct motif* motif, char c) {
+  int n = get_motif_num(motif);
+  //fprintf(F,"%d\t(",motif->id);
+  for(int i=0; i<n; i++) {
+    fprintf(F,"%d",motif->loop[i]);
+    if(i==n-1) {
+      fprintf(F,"%c",c);
+    } else {
+      fprintf(F,"-");
     }
   }  
 }
@@ -328,7 +342,6 @@ struct motif* expand_motif(struct motif* motif, int new_loop, int L_max) {
   struct motif* new_motif = create_motif(new_num);
   int new_id = get_new_id(id,new_num,new_loop,L_max);
   set_motif_id(new_motif,new_id);
-
 
   for(int i=0;i<num;i++) { // copy the old motif
     int loop = get_motif_loop(motif,i);
@@ -379,7 +392,8 @@ struct motif_group* create_motif_group(int size) {
   struct motif_group* motif_group = malloc(sizeof(struct motif_group));  
   motif_group->count = 0;  
   motif_group->size = size;
-  motif_group->data = malloc(sizeof(struct motif*) * size);
+  motif_group->data = calloc(size, sizeof(struct motif*));
+  //for(int i=0;i<size;i++) motif_group->data[i] = NULL; 
   return motif_group;
 }
 
@@ -408,7 +422,7 @@ struct motif* get_motif(struct motif_group* motif_group, int idx) {
 }
 
 int motif_empty(struct motif_group* motif_group, int idx) {  
-  if(idx < motif_group->size && idx >= 0) {
+  if(0 <= idx && idx < motif_group->size) {
     if(motif_group->data[idx]) {
       return 0;
     }
@@ -447,7 +461,7 @@ void append_motif(struct motif_group* motif_group, struct motif* motif) {
     motif_group->size = new_size;
     //printf("resizing to %d\n",new_size);
   } 
-  motif_group->data[len] = motif;
+  motif_group->data[len] = motif; // add to last spot, this need not be motif->id
   motif_group->count++;
 }
 
@@ -467,22 +481,21 @@ struct motif_group** create_motif_list(int N_loops, int L_max) {
   motif_list[0] = create_motif_group(0); // sort of a place holder, has size=0
   motif_list[1] = create_motif_group(L_max+1); // hairpin loops, should be L_max+1 in size: 0,1,...,L_max
   
-  for(int L=0;L<=L_max;L++) {
-    struct motif* motif = create_motif(1);
-    initialize_motif(motif,L); // one-loop motifs, setting l_0 = L;
-    add_motif(motif_list[1],motif);
-  }
   return motif_list;
 }
 
 struct motif_group*** build_motif_list(int N_loops, int L_max) {
-  // build motif library
-  struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max);
-  // build motif_group structure, initialize with singleton motifs:
-  struct motif_group** motif_list = create_motif_list(N_loops,L_max);  
-
+  // create data structures
+  struct motif_group** motif_list = create_motif_list(N_loops,L_max); // indexed by n only, all motifs for that n
+  struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max); // indexed by n and L, only "lowest" rotation
   struct list* prev_motif_ids = create_list();
+
+  // initialize with singleton motifs:
   for(int L=0;L<=L_max;L++) {
+    struct motif* motif = create_motif(1);
+    initialize_motif(motif,L); // one-loop motifs, setting l_0 = L;
+    add_motif(motif_list[1],motif);
+    append_motif(motif_lib[1][L],motif);
     list_append(prev_motif_ids,L);
   }
   
@@ -501,15 +514,15 @@ struct motif_group*** build_motif_list(int N_loops, int L_max) {
 	  int L_tot = sum + L;
 	  struct motif* new_motif = expand_motif(motif,L,L_max);
 	  add_motif(motif_list[n],new_motif);
+	  append_motif(motif_lib[n][L_tot],new_motif); //lexicographically lowest, only one added to lib
 	  list_append(motif_ids,new_id); // append the id of each motif
-	  append_motif(motif_lib[n][L_tot],new_motif); // only append the representative rotation
 	  for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has n rotations
 	    struct motif* prev_motif = new_motif; // init. prev_motif to lexicographically lowest motif
 	    new_motif = rotate_motif(new_motif,L_max); // first rotation
 	    int new_id = get_motif_id(new_motif);
 	    if(motif_empty(motif_list[n],new_id)) { // only add if it is not visited/stored yet
-	      add_motif(motif_list[n],new_motif);
-	      list_append(motif_ids,new_id); // append the id of each motif
+	      add_motif(motif_list[n],new_motif); // each rotation gets added to motif_list
+	      list_append(motif_ids,new_id); // append the id of each rotation to motif_ids
 	      set_next_motif(prev_motif,new_motif); // attach the rotation 
 	    }
 	  }
@@ -521,48 +534,6 @@ struct motif_group*** build_motif_list(int N_loops, int L_max) {
   }
   return motif_lib;
 }
-
-/* 
-// original, slightly slower method for build_motif_list 
-struct motif_group*** build_motif_list(int N_loops, int L_max) {
-  // build motif library
-  struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max);
-  // build motif_group structure, initialize with singleton motifs:
-  struct motif_group** motif_list = create_motif_list(N_loops,L_max);  
-
-  // recursively build motif_lib for different lengths    
-  for(int n=2;n<=N_loops;n++) { // create multi-junction loops 
-    int new_size = 1 + L_max * pow(L_max+1,n-1); // 1 + largest possible id for n loops that add up to L_max or less
-    motif_list[n] = create_motif_group(new_size);
-    int size = get_motif_group_size(motif_list[n-1]); // size of n-1
-    for(int id=0;id<size;id++) { // id of n-1 group
-      if(!motif_empty(motif_list[n-1],id)) { // checking if valid id for the n-1 group 
-	struct motif* motif = get_motif(motif_list[n-1],id);
-	int sum = get_motif_sum(motif);
-	for(int L=0;L<=L_max-sum;L++) {
-	  int new_id = get_new_id(id,n,L,L_max);
-	  if(motif_empty(motif_list[n],new_id)) { // only add the new motif if it is not filled yet.
-	    int L_tot = sum + L;
-	    struct motif* new_motif = expand_motif(motif,L,L_max);
-	    add_motif(motif_list[n],new_motif);	    
-	    append_motif(motif_lib[n][L_tot],new_motif);
-	    for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has n rotations
-	      struct motif* prev_motif = new_motif;
-	      new_motif = rotate_motif(new_motif,L_max);
-	      int new_id = get_motif_id(new_motif);
-	      if(motif_empty(motif_list[n],new_id)) { // only add if it is not visited/stored yet
-		add_motif(motif_list[n],new_motif);
-		set_next_motif(prev_motif,new_motif);
-	      }
- 	    }
-	  }
-	}
-      }
-    }
-  }
-  return motif_lib;
-}
- */
 
 void print_motif_lib_counts(struct motif_group*** motif_lib, int N_loops, int L_max) {
   for(int n=0; n<N_loops; n++) {
@@ -584,6 +555,33 @@ struct steptypes* create_steptypes(int length) {
   return steptypes;  
 }
 
+struct steptypes* motif_to_steptypes(struct motif* motif) {
+  int num = get_motif_num(motif);
+  int sum = get_motif_sum(motif);
+  //printf("building motif n=%d,L=%d:",num,sum);
+  //print_motif(motif,'\n');
+  struct steptypes* steptypes = create_steptypes(2*num+sum);
+  int count = 0;
+  steptypes_set(steptypes,count,"BP");
+  count++;
+  for(int i=0; i<num; i++) {    
+    for(int j=0; j<=motif->loop[i]; j++) {
+      //printf("(i=%d,j=%d)",i,j);
+      // loop of n nucleotides needs n+1 bb transforms, hence the "<=" in for loop
+      steptypes_set(steptypes,count,"BB");      
+      count++;
+    }
+    if(i < num-1) {
+      //printf("[i=%d]",i);
+      // add a base pair between each loop
+      steptypes_set(steptypes,count,"BP");
+      count++;
+    }
+  }
+  //printf("\n");
+  return steptypes;
+}
+
 int steptypes_length(struct steptypes* steptypes) {
   assert(steptypes);
   return steptypes->length;
@@ -599,31 +597,52 @@ void steptypes_set(struct steptypes* steptypes, int idx, char* step) {
   steptypes->steps[idx] = step;
 }
 
+struct steptypes* rotate_steptypes(struct steptypes* steptypes) {
+  assert(steptypes);
+  int length = steptypes_length(steptypes);
+  struct steptypes* rotation = create_steptypes(length);
+  // (a,b,c,...,y,z) -> (b,c,...,y,z,a)
+  for(int i=1; i<length; i++) {
+    steptypes_set(rotation,i-1,steptypes_get(steptypes,i));
+  }
+  steptypes_set(rotation,length-1,steptypes_get(steptypes,0));
+  return rotation;
+}
+
 struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end) {
+  //printf("splice attempt: %d %d, new_len=%d\n",start,end,end-start+1);
+  //fflush(stdout);
   struct steptypes* substeps = create_steptypes(end-start+1); // positions are inclusive
-  for(int i=start; i<=end; i++) {
-    char* step = steptypes_get(steptypes,i);
-    steptypes_set(substeps,i,step);
+  if(0 <= start && end < steptypes_length(steptypes)) {
+    for(int i=start; i<=end; i++) {
+      char* step = steptypes_get(steptypes,i);
+      steptypes_set(substeps,i-start,step); // map positions to begin at 0
+    }
+  } else {
+    printf("range error!");
+    exit(0);
   }
   return substeps;
 }
 
-struct steptypes* motif_to_steptypes(struct motif* motif) {
-  int num = get_motif_num(motif);
-  int sum = get_motif_sum(motif);
-  struct steptypes* steptypes = create_steptypes(num+sum);
-  int count = 0;
-  steptypes_set(steptypes,count,"bp");
-  count++;
-  for(int i=0; i<num; i++) {    
-    for(int j=0; j<motif->loop[i]; j++) {
-      steptypes_set(steptypes,count,"bb");
-      count++;
-    }
-    if(i < num-1) {
-      steptypes_set(steptypes,count,"bb");
-      count++;
+void print_steptypes(struct steptypes* steptypes) {
+  for(int i=0; i<steptypes_length(steptypes); i++) {
+    char* step = steptypes_get(steptypes,i);
+    if(i == steptypes_length(steptypes)-1) {
+      printf("%s",step);
+    } else {
+      printf("%s-",step);
     }
   }
-  return steptypes;
+}
+
+void fprint_steptypes(FILE* F, struct steptypes* steptypes) {
+  for(int i=0; i<steptypes_length(steptypes); i++) {
+    char* step = steptypes_get(steptypes,i);
+    if(i == steptypes_length(steptypes)-1) {
+      fprintf(F,"%s",step);
+    } else {
+      fprintf(F,"%s-",step);
+    }
+  }
 }

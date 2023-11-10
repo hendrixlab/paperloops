@@ -5,14 +5,14 @@
  * author: David Hendrix david.hendrix@oregonstate.edu
  */
 
-#ifndef _RNA_PDB
-#define _RNA_PDB
+#ifndef _RNA_IO
+#define _RNA_IO
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-#include "rna_pdb.h"
+#include "rna_io.h"
 #include "rna_data.h"
 
 /* DATA TYPES */

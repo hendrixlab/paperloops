@@ -15,7 +15,7 @@
 extern const double pi;
 
 double* create_vector();
-double** create_matrix();
+double** create_matrix(double val);
 double* add(double* v, double* w);
 double* subtract(double* v, double* w);
 double* scale_vector(double *v, double scalar);
@@ -27,6 +27,9 @@ double get_angle(double *v, double* w);
 double argument(double x, double y);
 double* orthonormal_projection(double *v, double *w);
 double* cross(double* v, double* w);
+
+// matrices
+void print_matrix(double** A);
 double* matvec_product(double** A, double* x);
 double** matmat_product(double** A, double** B);
 double** inverse(double** A);

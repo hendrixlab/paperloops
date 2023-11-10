@@ -38,7 +38,7 @@ struct library {
 };
 
 /*
- * Tools for building/adding/removing elements from library
+ * Tools for transform libraries
  */
 
 struct library* create_library() {
@@ -127,13 +127,13 @@ void append_transform(struct library* lib, struct transform* T) {
 }
 
 /*
- * Methods for building the transform library
+ * Methods for frames
  */
 
 struct frame* create_frame() {
   struct frame* f = malloc(sizeof(struct frame*));
   f->ctr = create_vector(); // vector of zeros, placeholer
-  f->M = create_matrix(); // identity matrix, placeholder
+  f->M = create_matrix(1.0); // identity matrix, placeholder
   return f;
 }
 
@@ -146,16 +146,22 @@ struct frame* get_frame(struct nuc* n) {
   double* y = normalize(cross(z,subtract(atom_coord(c),atom_coord(b))));
   double* x = normalize(cross(y,z));
   f->ctr = atom_coord(a);
-  f->M[0] = x;
-  f->M[1] = y;
-  f->M[2] = z;
+  double** M = create_matrix(1.0);
+  M[0] = x;
+  M[1] = y;
+  M[2] = z;
+  f->M = transpose(M);
   return f;
 }
+
+/**************************
+ * Methods for transforms *
+ **************************/
 
 struct transform* create_transform() {
   struct transform* T = malloc(sizeof(struct transform));
   T->t = create_vector(); // vector of zeros, placeholder
-  T->R = create_matrix(); // identity matrix, placeholder
+  T->R = create_matrix(1.0); // identity matrix, placeholder
   T->EV = create_vector(); // Euler vector, initially matrix of zeros
   return T;
 }
@@ -164,12 +170,60 @@ struct transform* compute_transform(struct frame* f1, struct frame* f2) {
   struct transform* T = create_transform();
   double** M1_inverse = inverse(f1->M);
   T->t = matvec_product(M1_inverse,subtract(f2->ctr,f1->ctr));
+  //printf("compute transform\n");
+  //print_matrix(M1_inverse);
+  //print_matrix(f2->M);
+  //printf("-->\n");
   T->R = matmat_product(M1_inverse,f2->M);
+  //print_matrix(T->R);
   return T;
 }
 
-struct transform* add_euler_vector(struct transform* T) {
+void set_euler_vector(struct transform* T) {
   T->EV = compute_euler_vector(T->R);  
+}
+
+double* get_euler_vector(struct transform* T) {
+  return T->EV;
+}
+
+double get_T6_value(struct transform* T, int i) {
+  if(0 <= i && i < 3) {
+    return T->t[i];
+  } else if(3 <= i && i < 6) { // hard-coded b/c should never be other than 6D
+    return T->EV[i-3];
+  } else {
+    printf("Unexpected value in get_T6_value: %d",i);
+    exit(0);
+  }
+}
+
+double* get_T6_std_dev(struct library* pts) {
+  int d = 6; // assuming 6D coordinates
+  double* sum = malloc(sizeof(double)*d);
+  double* sum_squares = malloc(sizeof(double)*d);
+  double* std_dev = malloc(sizeof(double)*d);  
+  int n = library_size(pts);
+  
+  for(int j=0; j<d; j++) {
+    sum[j] = 0.0;
+    sum_squares[j] = 0.0;
+  }
+  for(int i=0; i<n; i++) {
+    struct transform* T = get_transform(pts,i);
+    for(int j=0; j<d; j++) {
+      double val = get_T6_value(T,j);
+      sum[j] += val;
+      sum_squares[j] += val*val;	
+    }
+  } 
+  for(int j=0; j<d; j++) {
+    std_dev[j] = sqrt((sum_squares[j] - sum[j]*sum[j]/n)/(n-1));
+  }
+  free(sum);
+  free(sum_squares);
+  
+  return std_dev;
 }
 
 struct transform* apply_transform(struct transform* x1, struct transform* T) {
@@ -181,8 +235,12 @@ struct transform* apply_transform(struct transform* x1, struct transform* T) {
 
 struct transform* reverse_transform(struct transform* T) {
   struct transform* T_rev = create_transform();
+  //printf("Computing the reverse transform:\n");
+  //print_matrix(T->R);
   T_rev->t = matvec_product(inverse(T->R),scale_vector(T->t,-1.0)); // transpose should work and seems faster
   T_rev->R = inverse(T->R);
+  //print_matrix(T_rev->R);
+  return T_rev;
 }
 
 int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
@@ -253,162 +311,10 @@ struct library* build_basepair_transform_library(struct rna_data* RNA, struct bp
       struct frame* f2 = get_frame(n2);
       struct transform* T = compute_transform(f1,f2);
       append_transform(basepair_library,T);
+      //struct transform* T2 = compute_transform(f1,f2);
+      //append_transform(basepair_library,T2);
     }
   }
   printf("found %d base pairs.\n",library_size(basepair_library));
   return basepair_library;
-}
-
-/***********************
- * sampling/simulation *
- ***********************/
-
-struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib) {
-  srand(1337);
-  struct library* trace = create_library(); // library to store the trace
-  struct transform* x = create_transform(); // the initial point
-
-  for(int i=0; i<steptypes_length(steps); i++) {
-    char* step = steptypes_get(steps,i);
-    struct transform* T;
-    if(strcmp(step,"bb") == 0) {
-      T = get_random_transform(bb_lib);
-    } else if(strcmp(step,"bp") == 0) {
-      T = get_random_transform(bp_lib);
-    } else {
-      printf("Unknown step found!\n");
-      exit(1);
-    }
-    x = apply_transform(x,T);
-    append_transform(trace,x);
-  }
-  return trace;
-}
-
-struct library* get_pts_forward(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
-  struct library* pts_fwd = create_library(); // create the library to store the points
-  for(int i=0; i<size; i++) {
-    struct library* trace = get_random_trace(steps,bb_lib,bp_lib);
-    struct transform* x = get_transform(trace,-1); // get the last transform in the trace
-    add_euler_vector(x);
-    append_transform(pts_fwd,x);
-  }
-  return pts_fwd;
-}
-
-struct library* get_pts_reverse(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
-  struct library* pts_fwd = get_pts_forward(steps,bb_lib,bp_lib,size);
-  struct library* pts_rev = create_library();
-  for(int i=0; i<library_size(pts_fwd); i++) {
-    struct transform* T = get_transform(pts_fwd,i);
-    struct transform* T_rev = reverse_transform(T);
-    add_euler_vector(T_rev);
-    append_transform(pts_rev,T_rev);
-  }
-}
-
-/*************
- * KDE tools *
- *************/
-
-double get_T6_value(struct transform* T, int i) {
-  if(0 <= i && i < 3) {
-    return T->t[i];
-  } else if(3 <= i && i < 6) { // hard-coded b/c should never be other than 6D
-    return T->EV[i-3];
-  } else {
-    printf("Unexpected value in get_T6_value: %d",i);
-    exit(0);
-  }
-}
-
-double* get_kde_bandwidth(struct library* pts) {
-  int d = 6; // assuming 6D coordinates
-  double* h = malloc(sizeof(double)*d);
-  double* sum = malloc(sizeof(double)*d);
-  double* sumSquares = malloc(sizeof(double)*d);
-  double* stdDev = malloc(sizeof(double)*d);
-  
-  // calculate std-dev, maybe should be a subroutine? 
-  for(int j=0; j<d; j++) {
-    sum[j] = 0.0;
-    sumSquares[j] = 0.0;
-  }
-  int n = library_size(pts);
-  for(int i=0; i<n; i++) {
-    struct transform* T = get_transform(pts,i);
-    for(int j=0; j<d; j++) {
-      double val = get_T6_value(T,j);
-      sum[j] += val;
-      sumSquares[j] += val*val;	
-    }
-  }
-  // calculate bandwidth and final std-dev calc
-  for(int j=0; j<d; j++) {
-    stdDev[j] = sqrt((sumSquares[j] - sum[j]*sum[j]/n)/(n-1));
-    h[j] = pow(4/(d+2)/n,1/(n+4))*stdDev[j];
-  }  
-  return h;
-}
-
-double get_kde_probability(struct transform* x, struct library* pts, double* bandwidth) {
-  // evaluate the probability f(x) of point x using the data in pts
-  int d = 6;
-  int n = library_size(pts);
-  
-  double det_bw = 1.0;
-  for(int j=0; j<d; j++) {
-    det_bw *= bandwidth[j];
-  }
-  double coeff = sqrt(pow(1.0/(2.0*pi),d)/det_bw);
-  
-  double sum = 0.0;
-  for(int i=0; i<n; i++) {
-    struct transform* pts_T = get_transform(pts,i);
-    double expsum = 0.0;
-    for(int j=0; j<d; j++) {
-      double x_val = get_T6_value(x,j);
-      double pts_val = get_T6_value(pts_T,j);
-      double val = x_val - pts_val;
-      expsum += val*val/bandwidth[j];
-    }
-    sum += coeff*exp(-expsum/2.0);
-  }
-  return sum/n;
-}
-
-/*********************************
- * Effective Concentration C_eff * 
- *********************************/
-
-double* get_effective_concentration(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
-  int length = steptypes_length(steps);
-  int halfway = length/2; // should be floored b/c ints
-
-  struct steptypes* steps_fwd = steptypes_splice(steps,0,halfway-1);
-  struct library* pts_fwd =  get_pts_forward(steps_fwd,bb_lib,bp_lib,size);
-  
-  struct steptypes* steps_rev = steptypes_splice(steps,halfway,length-1);
-  struct library* pts_rev = get_pts_reverse(steps_rev,bb_lib,bp_lib,size);
-
-  double* h = get_kde_bandwidth(pts_fwd);
-  
-  double C_eff_sum  = 0.0;
-  double C_eff_sumSquares = 0.0;
-  int N = library_size(pts_rev);
-  for(int i=0; i<N; i++) {
-    struct transform* x = get_transform(pts_rev,i);
-    double p = get_kde_probability(x, pts_fwd, h);
-    double v = norm(x->EV);
-    double w = 1.0;
-    if(v != 0.0) {
-      double sqrt_w = sin(v/2)/(v/2);
-      w = sqrt_w*sqrt_w;
-    }
-    double C_eff_sample = p/(w/(8*pi*pi))/(6.022e23/1e27);
-    C_eff_sum += C_eff_sample;
-    C_eff_sumSquares += C_eff_sample*C_eff_sample;
-  }
-  double C_eff_mean = C_eff_sum / N;
-  double C_eff_stdDev = sqrt((C_eff_sumSquares - C_eff_sum*C_eff_sum/N)/(N-1));
 }

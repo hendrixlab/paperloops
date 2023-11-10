@@ -1,0 +1,10 @@
+  int N_loops = 5;
+  int L_max = 8;
+  int N_iter = 100;
+
+[Linux@anybase scropple]$ date ; ./test4_sample_C_eff data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt > C_eff_results1.txt ; date
+Mon Nov  6 20:00:32 PST 2023
+20.148u 1.593s 0:21.74 99.9%	0+0k 0+328io 0pf+0w
+Mon Nov  6 20:00:54 PST 2023
+
+

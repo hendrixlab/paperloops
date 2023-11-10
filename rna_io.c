@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "rna_pdb.h"
+#include "rna_io.h"
 #include "rna_data.h"
 
 #define MAX_LINE_LENGTH 1000

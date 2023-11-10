@@ -21,7 +21,8 @@ double* create_vector() {
   return vector;
 }
 
-double** create_matrix() {
+double** create_matrix(double val) {
+  // when val is 0.0 it is a zero matrix, when 1.0 it's an identity matrix
   double** matrix = malloc(3 * sizeof(double*));
   matrix[0] = malloc(3*sizeof(double));
   matrix[1] = malloc(3*sizeof(double));
@@ -29,7 +30,7 @@ double** create_matrix() {
   for(int i=0; i<3; i++) {
     for(int j=0; j<3; j++) {
       if(i == j) {
-	matrix[i][j] = 1.0;
+	matrix[i][j] = val;
       } else {
 	matrix[i][j] = 0.0;
       }
@@ -115,6 +116,16 @@ double* cross(double* v, double* w) {
 
 /* Matrices */
 
+void print_matrix(double** A) {
+  for(int i=0;i<3;i++) {
+    printf("[");
+    for(int j=0;j<3;j++) {
+      printf(" %.3f ",A[i][j]);
+    }
+    printf("]\n");
+  }
+}
+
 double* matvec_product(double** A, double* x) {
   double* result = create_vector();  
   result[0] = dot(A[0],x);
@@ -124,7 +135,7 @@ double* matvec_product(double** A, double* x) {
 }
 
 double** matmat_product(double** A, double** B) {
-  double** result = create_matrix();
+  double** result = create_matrix(0.0);
   for(int i=0; i<3; i++) {
     for(int j=0; j<3; j++) {
       for(int k=0; k<3; k++) {
@@ -136,7 +147,7 @@ double** matmat_product(double** A, double** B) {
 }
 
 double** inverse(double** A) {
-  double** inv = create_matrix();
+  double** inv = create_matrix(1.0);
   double det = 0.0;
   
   for(int i=0; i<3; i++) {
@@ -151,7 +162,7 @@ double** inverse(double** A) {
 }
 
 double** transpose(double** A) {
-  double** A_Tr = create_matrix();
+  double** A_Tr = create_matrix(1.0);
   
   for(int i=0; i<3; i++){
     for(int j=0; j<3; j++) {
@@ -163,7 +174,7 @@ double** transpose(double** A) {
 
 double trace(double** A) {
   // returns the trace of a matrix (sum of diagonal terms)
-  double Tr = 0;
+  double Tr = 0.0;
   for(int i=0; i<3; i++) {
     Tr += A[i][i];
   }
@@ -191,16 +202,18 @@ double* compute_euler_angles(double** R) {
 }
 
 double* compute_euler_vector(double** R) {
-  // compute the Euler vector from rotation matrix $
+  // compute the Euler vector from rotation matrix, i.e. to "Euler axis/angle"
   // defined as the product of the axis and angle from axis-angle representation
   // clearest formula: https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions
   // FLAW: assumes that theta is not an exact mulitple of pi, maybe unstable around there
   double theta = acos((trace(R)-1.0)/2.0);
+  //printf("Tr(R)=%.3f, theta=%.3f\n",trace(R),theta);
   double* omega = create_vector(); // allocate 0-vector
   omega[0] = (R[2][1] - R[1][2])/(2.0*sin(theta));
   omega[1] = (R[0][2] - R[2][0])/(2.0*sin(theta));
-  omega[2] = (R[1][0] - R[0][1])/(2.0*sin(theta));
+  omega[2] = (R[1][0] - R[0][1])/(2.0*sin(theta));  
   double* EV = scale_vector(omega,theta);
+  //double* EV = create_vector();
   return EV;
 }
 

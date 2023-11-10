@@ -29,7 +29,7 @@ struct steptypes;
  * Tools for building/adding/removing to a motif
  */
 
-int* create_array(int len, int val);
+int* create_rep_array(int len, int val);
 struct list* create_list();
 void list_append(struct list* list, int n);
 int list_length(struct list* list);
@@ -49,7 +49,8 @@ int get_motif_num(struct motif* motif);
 int get_motif_loop(struct motif* motif, int idx);
 int get_motif_id(struct motif* motif);
 int get_motif_sum(struct motif* motif);
-int print_motif(struct motif* motif, char c);
+void print_motif(struct motif* motif, char c);
+void fprint_motif(FILE* F, struct motif* motif, char c);
 int get_new_id(int id, int new_num, int new_loop, int L_max);
 int compute_motif_id(struct motif* motif, int L_max);
 struct motif* expand_motif(struct motif* motif, int new_loop, int L_max);
@@ -73,11 +74,14 @@ struct motif_group*** build_motif_list(int N_loops, int L_max);
  ***********************/
 
 struct steptypes* create_steptypes(int length);
+struct steptypes* motif_to_steptypes(struct motif* motif);
 int steptypes_length(struct steptypes* steptypes);
 char* steptypes_get(struct steptypes* steptypes, int idx);
 void steptypes_set(struct steptypes* steptypes, int idx, char* step);
+struct steptypes* rotate_steptypes(struct steptypes* steptypes);
 struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end);
-struct steptypes* motif_to_steptypes(struct motif* motif);
+void print_steptypes(struct steptypes* steptypes);
+void fprint_steptypes(FILE* F, struct steptypes* steptypes);
 
 #endif
 
