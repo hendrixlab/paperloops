@@ -2,7 +2,9 @@
  * This library contains the definitions of structures and functions for transforms between 
  * adjacent nucleotides
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) David Hendrix david.hendrix@oregonstate.edu
+ * In collaboration with Rhiju Das, Stanford
+ * translated/derived from toyfold3 with permission: https://github.com/rhiju/toyfold3 (C) Rhiju Das
  */
 
 #ifndef _TRANSFORM

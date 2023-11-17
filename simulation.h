@@ -2,7 +2,9 @@
  * This library contains the definitions of structures and functions for transforms between 
  * adjacent nucleotides
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
+ * In collaboration with Rhiju Das, Stanford
+ * translated/derived from toyfold3 with permission: https://github.com/rhiju/toyfold3 (C) Rhiju Das
  */
 
 #include <stdio.h>
@@ -19,12 +21,13 @@ struct array;
 struct array* create_array(int size);
 int array_size(struct array* array);
 void array_set(struct array* array, int idx, double val);
-void array_get(struct array* array, int idx);
+double array_get(struct array* array, int idx);
 
 // basic statistics 
-struct array* get_samples_geometric_mean(struct array* samples1, struct array* samples2);
 double get_sample_mean(struct array* samples);
 double get_sample_std_dev(struct array* samples);
+double get_geometric_mean(double val1, double val2);
+struct array* get_samples_geometric_mean(struct array* samples1, struct array* samples2);
 
 // simulation/sampling
 struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib);

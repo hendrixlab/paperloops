@@ -2,7 +2,9 @@
  * This library contains the definitions of structures and functions for simulations and KDE
  * to perform basic statistics 
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
+ * In collaboration with Rhiju Das, Stanford
+ * translated/derived from toyfold3 with permission: https://github.com/rhiju/toyfold3 (C) Rhiju Das
  */
 
 #include <stdio.h>
@@ -53,24 +55,6 @@ double array_get(struct array* array, int idx) {
  * basic statistics *
  ********************/
 
-struct array* get_samples_geometric_mean(struct array* samples1, struct array* samples2) {
-  int N1 = array_size(samples1);
-  int N2 = array_size(samples2);
-  if(N1 == N2) {
-    struct array* geometric_mean = create_array(N1);
-    for(int i=0; i<N1; i++) {
-      double val1 = array_get(samples1,i);;
-      double val2 = array_get(samples2,i);;
-      array_set(geometric_mean,i,sqrt(val1*val2));
-    }
-    return geometric_mean;
-  } else {
-    printf("Lengths do not match!\n");
-    exit(0);
-  }
-}
-
-
 double get_sample_mean(struct array* samples) {
   double sum = 0.0;
   int N = array_size(samples);
@@ -93,6 +77,27 @@ double get_sample_std_dev(struct array* samples) {
   return sqrt( (sum_squares - sum*sum/N) / (N-1) );
 }
 
+double get_geometric_mean(double val1, double val2) {
+  return sqrt(val1*val2);
+}
+
+struct array* get_samples_geometric_mean(struct array* samples1, struct array* samples2) {
+  int N1 = array_size(samples1);
+  int N2 = array_size(samples2);
+  if(N1 == N2) {
+    struct array* geometric_mean = create_array(N1);
+    for(int i=0; i<N1; i++) {
+      double val1 = array_get(samples1,i);;
+      double val2 = array_get(samples2,i);;
+      array_set(geometric_mean,i,get_geometric_mean(val1,val2));
+    }
+    return geometric_mean;
+  } else {
+    printf("Lengths do not match!\n");
+    exit(0);
+  }
+}
+
 /***********************
  * sampling/simulation *
  ***********************/
@@ -100,7 +105,7 @@ double get_sample_std_dev(struct array* samples) {
 struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib) {
   struct library* trace = create_library(); // library to store the trace
   struct transform* x = create_transform(); // the initial point
-
+  
   for(int i=0; i<steptypes_length(steps); i++) {
     char* step = steptypes_get(steps,i);
     struct transform* T;
@@ -121,13 +126,11 @@ struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib
 struct library* get_pts_forward(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
   struct library* pts_fwd = create_library(); // create the library to store the points
   for(int i=0; i<size; i++) {
-    //printf("[pts_fwd:%d]\n",i);
     struct library* trace = get_random_trace(steps,bb_lib,bp_lib);
     struct transform* x = get_transform(trace,-1); // get the last transform in the trace
     set_euler_vector(x);
     append_transform(pts_fwd,x);
   }
-  //printf("\n");
   return pts_fwd;
 }
 
@@ -135,13 +138,11 @@ struct library* get_pts_reverse(struct steptypes* steps, struct library* bb_lib,
   struct library* pts_fwd = get_pts_forward(steps,bb_lib,bp_lib,size);
   struct library* pts_rev = create_library();
   for(int i=0; i<library_size(pts_fwd); i++) {
-    //printf("[pts_rev:%d]\n",i); 
     struct transform* T = get_transform(pts_fwd,i);
     struct transform* T_rev = reverse_transform(T);
     set_euler_vector(T_rev);
     append_transform(pts_rev,T_rev);
   }
-  //printf("\n");
   return pts_rev;
 }
 
@@ -158,7 +159,8 @@ struct array* get_kde_bandwidth(struct library* pts) {
   double* std_dev = get_T6_std_dev(pts);
   
   for(int i=0; i<d; i++) {
-    array_set(h,i,pow(4/(n*(d+2)),1/(n+4))*std_dev[i]);
+    // the h[i] terms correspond to diagonal terms sqrt(H[i,i]) of a bandwidth matrix
+    array_set(h, i, pow(4/(n*(d+2)),1/(n+4)) * std_dev[i] );
   }  
   free(std_dev);
   return h;
@@ -177,21 +179,24 @@ double get_kde_probability(struct transform* x, struct library* pts, struct arra
   for(int j=0; j<d; j++) {
     det_bw *= array_get(bandwidth,j);
   }
-  double coeff = sqrt(pow(1.0/(2.0*pi),d)/det_bw);
+  double coeff = pow(2.0*pi,-d/2) / det_bw;
   
   double sum = 0.0;
   for(int i=0; i<n; i++) {
     struct transform* pts_T = get_transform(pts,i);
+    //printf("pts_T_%d=",i);
+    //print_transform_T6(pts_T);
     double exponent = 0.0; // will store the sum resulting from (x-x')H(x-x')
     for(int j=0; j<d; j++) {
       double x_val = get_T6_value(x,j);
       double pts_val = get_T6_value(pts_T,j);
       double val = x_val - pts_val;
-      exponent += val*val/array_get(bandwidth,j);
+      double h = array_get(bandwidth,j);
+      exponent += val*val/(h*h);
     }
     sum += coeff*exp(-exponent/2.0);
   }
-  return sum / n;
+  return sum / (double)n;
 }
 
 /*********************************
@@ -205,6 +210,7 @@ struct array* compute_C_eff_samples(struct library* pts_fwd, struct library* pts
   for(int i=0; i<N; i++) {
     struct transform* x = get_transform(pts_rev,i);
     double p = get_kde_probability(x, pts_fwd, h);
+    //printf("p=%.6e\n",p);
     double v = norm(get_euler_vector(x));
     double w = 1.0;
     if(v != 0.0) {
@@ -231,10 +237,32 @@ struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib
   struct array* h_fwd = get_kde_bandwidth(pts_fwd);
   struct array* h_rev = get_kde_bandwidth(pts_rev);
 
-  struct array* C_eff_fwd = compute_C_eff_samples(pts_fwd,pts_rev,h_fwd);
-  struct array* C_eff_rev = compute_C_eff_samples(pts_rev,pts_fwd,h_rev);
+  struct array* C_eff_fwd_samples = compute_C_eff_samples(pts_fwd,pts_rev,h_fwd);
+  struct array* C_eff_rev_samples = compute_C_eff_samples(pts_rev,pts_fwd,h_rev);
   
-  struct array* C_eff_samples = get_samples_geometric_mean(C_eff_fwd,C_eff_rev);
+  double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples);
+  double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples);
+  double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(array_size(C_eff_fwd_samples));
+  double C_eff_rev_mean = get_sample_mean(C_eff_rev_samples);
+  double C_eff_rev_std_dev = get_sample_std_dev(C_eff_rev_samples);
+  double C_eff_rev_error = C_eff_rev_std_dev / sqrt(array_size(C_eff_rev_samples));
   
-  return C_eff_samples;
+  // statistical error
+  double C_eff_fwd_relerr = C_eff_fwd_error / C_eff_fwd_mean;
+  double C_eff_rev_relerr = C_eff_rev_error / C_eff_rev_mean;
+  // systematic error
+  double C_eff_diff = 0.5 * abs(log(C_eff_fwd_mean/C_eff_rev_mean));
+
+  // geometric mean of the fwd and rev arithmetic means:
+  double C_eff = get_geometric_mean(C_eff_fwd_mean,C_eff_rev_mean);
+  // compute relative error as a Euclidian distance of statistical and systematic error "dimensions"
+  double C_eff_relerr = sqrt(C_eff_fwd_relerr*C_eff_fwd_relerr + C_eff_rev_relerr*C_eff_rev_relerr + C_eff_diff*C_eff_diff);
+  // compute error by scaling unitless relative error by the mean
+  double C_eff_error = C_eff_relerr * C_eff;
+
+  struct array* C_eff_stats = create_array(2);
+  array_set(C_eff_stats,0,C_eff);
+  array_set(C_eff_stats,1,C_eff_error);
+  
+  return C_eff_stats;
 }

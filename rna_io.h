@@ -2,7 +2,7 @@
  * This library contains the definitions of structures and functions reading PDB files
  * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
  */
 
 #ifndef _RNA_IO

@@ -2,7 +2,7 @@
  * This library contains the definitions of structures and functions reading PDB files
  * for RNA structures and storing into the RNA data structure defined in RNA_molecule.c
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
  */
 
 #include <stdio.h>
@@ -202,8 +202,10 @@ struct rna_data* read_pdb_file(char* input_file_name) {
     while(fgets(line,MAX_LINE_LENGTH,F)) {
       strncpy(rec_type,line,6);
       if((strcmp(rec_type,"ATOM  ") == 0)||(strcmp(rec_type,"HETATM") == 0)) {
+	//if(strcmp(rec_type,"ATOM  ") == 0) {
 	char chain_id = extract_chain_id(line);
 	if(new_chain_id(RNA_model,chain_id)) {
+	  printf("Found new chain: %c\n",chain_id);
 	  struct chain* chain = create_chain(chain_id);
 	  add_chain(RNA_model,chain);
 	  //printf("added new chain: %c\n",chain_id);
@@ -236,6 +238,7 @@ struct rna_data* read_pdb_file(char* input_file_name) {
   // make an array copy of the linked list for faster access of base pairs
   set_rna_nuc_array(RNA);
   fclose(F);
+  printf("PDB file %s read completed.\n",input_file_name);
   return RNA;
 }
 
@@ -283,23 +286,34 @@ struct bp_array* read_basepair_file(char *basepair_file) {
     exit(1);
   }
 
+  printf("reading basepair file: %s\n",basepair_file);
   int size = count_basepairs(F);
+  printf("allocating bp_array of size: %d\n",size);
   struct bp_array* bp_array = create_bp_array(size);
-  fseek(F,0,0);   // reset file
+  fseek(F,0,0); // reset file
 
   int count = 0;
   while(fgets(line,MAX_LINE_LENGTH,F)) {
     struct split_text* row = split_line(line," ");
     if(row->cols >= 4) {
-      if((strcmp(row->term[2],"W")==0)&&(strcmp(row->term[3],"W")==0)&&(strcmp(row->term[4],"C")==0)) {	
+      if((strcmp(row->term[2],"W")==0)&&(strcmp(row->term[3],"W")==0)&&(strcmp(row->term[4],"C")==0)) {
+	//printf("first parse: %s %s\n",row->term[0],row->term[1]);
 	struct split_text* bp1_info = split_line(row->term[0],":");
 	struct split_text* bp2_info = split_line(row->term[1],":");
-	struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[2]),atoi(bp2_info->term[2]));
-	//printf("%s %s %s %s\n",bp1_info->term[0],bp2_info->term[0],bp1_info->term[2],bp2_info->term[2]);
-	set_bp(bp_array,bp,count);
+	//printf("%s %s %s %s\n",bp1_info->term[0],bp2_info->term[0],bp1_info->term[1],bp2_info->term[1]);
+	if(bp1_info->cols == 2 && bp2_info->cols == 2) {
+	  struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[1]),atoi(bp2_info->term[1]));
+	  set_bp(bp_array,bp,count);
+	} else if(bp1_info->cols == 3 && bp2_info->cols == 3) {
+	  struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[2]),atoi(bp2_info->term[2]));
+	  set_bp(bp_array,bp,count);	  
+	} else {
+	  printf("Unexpected situation in basepair file: %s",basepair_file);
+	}
 	count++;
       }
     }
   }
+  printf("reading basepair file complete.\n");
   return bp_array;
 }

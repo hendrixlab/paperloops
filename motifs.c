@@ -2,7 +2,9 @@
  * This library contains the definitions of structures and functions related to loop motifs
  * defining the lengths of each loop in a multiloop structure. e.g. [3,4,2,1]
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
+ * In collaboration with Rhiju Das, Stanford
+ * translated/derived from toyfold3 with permission: https://github.com/rhiju/toyfold3 (C) Rhiju Das
  */
 
 #include "motifs.h"

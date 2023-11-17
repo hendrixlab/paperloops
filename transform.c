@@ -2,7 +2,9 @@
  * This library contains the definitions of structures and functions for transforms between 
  * adjacent nucleotides
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) David Hendrix david.hendrix@oregonstate.edu
+ * In collaboration with Rhiju Das, Stanford
+ * translated/derived from toyfold3 with permission: https://github.com/rhiju/toyfold3 (C) Rhiju Das
  */
 
 #include <stdio.h>
@@ -16,9 +18,9 @@
 
 //const double pi = 3.1415926535898;
 
-/*
- * data structures for the transform and for the library of transforms
- */
+/**********************************************************
+ * Data structures for transforms and transform libraries *
+ **********************************************************/
 
 struct frame {
   double* ctr;
@@ -170,16 +172,26 @@ struct transform* compute_transform(struct frame* f1, struct frame* f2) {
   struct transform* T = create_transform();
   double** M1_inverse = inverse(f1->M);
   T->t = matvec_product(M1_inverse,subtract(f2->ctr,f1->ctr));
-  //printf("compute transform\n");
-  //print_matrix(M1_inverse);
-  //print_matrix(f2->M);
-  //printf("-->\n");
   T->R = matmat_product(M1_inverse,f2->M);
-  //print_matrix(T->R);
   return T;
 }
 
+struct transform* apply_transform(struct transform* x1, struct transform* T) {
+  struct transform* x2 = create_transform();
+  x2->t = add(x1->t,matvec_product(x1->R,T->t));
+  x2->R = matmat_product(x1->R,T->R);
+  return x2;
+}
+
+struct transform* reverse_transform(struct transform* T) {
+  struct transform* T_rev = create_transform();
+  T_rev->t = matvec_product(inverse(T->R),scale_vector(T->t,-1.0)); // transpose should work and seems faster
+  T_rev->R = inverse(T->R);
+  return T_rev;
+}
+
 void set_euler_vector(struct transform* T) {
+  // calling function in vectorfun.c
   T->EV = compute_euler_vector(T->R);  
 }
 
@@ -226,22 +238,17 @@ double* get_T6_std_dev(struct library* pts) {
   return std_dev;
 }
 
-struct transform* apply_transform(struct transform* x1, struct transform* T) {
-  struct transform* x2 = create_transform();
-  x2->t = add(x1->t,matvec_product(x1->R,T->t));
-  x2->R = matmat_product(x1->R,T->R);
-  return x2;
+void print_transform_T6(struct transform* x) {
+  int d=6;
+  printf("[");
+  for(int j=0; j<d; j++) {
+    double x_val = get_T6_value(x,j);
+    printf(" %f ",x_val);
+  }
+  printf("]\n");
 }
 
-struct transform* reverse_transform(struct transform* T) {
-  struct transform* T_rev = create_transform();
-  //printf("Computing the reverse transform:\n");
-  //print_matrix(T->R);
-  T_rev->t = matvec_product(inverse(T->R),scale_vector(T->t,-1.0)); // transpose should work and seems faster
-  T_rev->R = inverse(T->R);
-  //print_matrix(T_rev->R);
-  return T_rev;
-}
+/* processing biophysical data to compute transforms */
 
 int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
   struct atom* a1 = get_last_backbone_atom(n1);
@@ -253,7 +260,7 @@ int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
 	return 1;
       }    
     } else {
-      printf("Unexpected atoms found: %s %s\n",atom_name(a1),atom_name(a2));
+      printf("Unexpected atoms found for nucs %d and %d: %s %s\n",nuc_num(n1),nuc_num(n2),atom_name(a1),atom_name(a2));
       exit(1);
     }
   }
@@ -311,7 +318,7 @@ struct library* build_basepair_transform_library(struct rna_data* RNA, struct bp
       struct frame* f2 = get_frame(n2);
       struct transform* T = compute_transform(f1,f2);
       append_transform(basepair_library,T);
-      //struct transform* T2 = compute_transform(f1,f2);
+      //struct transform* T2 = compute_transform(f2,f1);
       //append_transform(basepair_library,T2);
     }
   }

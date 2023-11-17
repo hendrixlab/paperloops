@@ -29,39 +29,46 @@ int main(int argc, char *argv[]) {
   struct library* bp_lib = build_basepair_transform_library(RNA,basepairs);
   printf("libraries complete.\n");
 
-  int N_loops = 5;
-  int L_max = 8;
-  int N_iter = 200;
+  int N_loops = 6;
+  int L_max = 10;
+  int N_iter = 1000;
+  srand(1337);
   // actual motifs built with efficient algorithm
   struct motif_group*** M = build_motif_list(N_loops,L_max);
   // theoretical lengths based on equation
   int** N = necklace_counts_fixed_length(N_loops,L_max);
  
-  FILE* OUT = fopen("C_eff_results5.txt","w");
+  FILE* OUT_ALL = fopen("C_eff_all_results.txt","w");
+  FILE* OUT = fopen("C_eff_results.txt","w");
   for(int n=1; n<=N_loops; n++) {
     for(int L=0; L<=L_max; L++) {
       int count = get_motif_group_count(M[n][L]);
-      printf("N(n=%d,L=%d)=%d, N_obs=%d\n",n,L,N[n][L],count);
+      printf("N_pred(n=%d,L=%d)=%d, N_obs=%d\n",n,L,N[n][L],count);
       for(int i=0; i<count; i++) {
 	struct motif* m = get_motif(M[n][L],i);
 	while(m) {	
 	  // here we have a motif, part of a necklace, first one should be lowest lexicographically.
 	  struct steptypes* steps = motif_to_steptypes(m);	  	  
 	  fprint_motif(OUT,m,'\t');
-	  //fprint_steptypes(OUT,steps);
+	  //fprint_steptypes(OUT,steps);	  
 	  double num = 0.0;
 	  double den = 0.0;
 	  for(int j=0; j<steptypes_length(steps); j++) {
-	    struct array* C_eff_samples = get_C_eff_both_dir(steps,bb_lib,bp_lib,N_iter);
-	    double C_eff_mean = get_sample_mean(C_eff_samples);
-	    double C_eff_std_dev = get_sample_std_dev(C_eff_samples);
-	    num += log(C_eff_mean)/(C_eff_std_dev*C_eff_std_dev);
-	    den += 1.0/(C_eff_std_dev*C_eff_std_dev);
+	    struct array* C_eff_stats = get_C_eff_both_dir(steps,bb_lib,bp_lib,N_iter);
+	    double C_eff_mean = array_get(C_eff_stats,0);
+	    double C_eff_error = array_get(C_eff_stats,1);
+	    fprint_motif(OUT_ALL,m,'\t');
+	    fprintf(OUT_ALL,"%.8f\t%.8f\n",C_eff_mean,C_eff_error);
+	    double C_eff_relerr = C_eff_error / C_eff_mean;
+	    num += log(C_eff_mean)/(C_eff_relerr*C_eff_relerr);
+	    den += 1.0/(C_eff_relerr*C_eff_relerr);
 	    steps = rotate_steptypes(steps);
 	  }
+	  // weighted average over steptypes rotations:
 	  double full_C_eff_mean = exp(num/den);
-	  double full_C_eff_err = sqrt(1.0/den);
-	  fprintf(OUT,"%.6f\t%.6f\n",full_C_eff_mean,full_C_eff_err);
+	  double full_C_eff_err = sqrt(1.0/den)*full_C_eff_mean;
+	  fprintf(OUT,"%.8f\t%.8f\n",full_C_eff_mean,full_C_eff_err);
+	  fflush(OUT);
 	  m = get_next_motif(m);
 	}
       }

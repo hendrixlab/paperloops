@@ -2,7 +2,7 @@
  * very simple library for some basic vector operations. 
  * only for 3-dimensional vectors
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
  */
 
 #include "vectorfun.h"
@@ -12,6 +12,10 @@
 #include <stdio.h>
 
 const double pi = 3.1415926535898;
+ 
+/******************
+ * Vector Methods *
+ *******************/
 
 double* create_vector() {
   double* vector = malloc(3 * sizeof(double));
@@ -19,24 +23,6 @@ double* create_vector() {
   vector[1] = 0.0;
   vector[2] = 0.0;
   return vector;
-}
-
-double** create_matrix(double val) {
-  // when val is 0.0 it is a zero matrix, when 1.0 it's an identity matrix
-  double** matrix = malloc(3 * sizeof(double*));
-  matrix[0] = malloc(3*sizeof(double));
-  matrix[1] = malloc(3*sizeof(double));
-  matrix[2] = malloc(3*sizeof(double));
-  for(int i=0; i<3; i++) {
-    for(int j=0; j<3; j++) {
-      if(i == j) {
-	matrix[i][j] = val;
-      } else {
-	matrix[i][j] = 0.0;
-      }
-    }
-  }
-  return matrix;
 }
 
 double* add(double* v, double* w) {
@@ -83,18 +69,6 @@ double* normalize(double *v) {
   return result;
 }
 
-double arccos(double x) {
-  return acos(x)*180.0/pi;
-}
-
-double get_angle(double *v, double* w) {
-  return acos(dot(v,w)/(norm(v)*norm(w)))*180.0/pi;
-}
-
-double argument(double x, double y) {
-  return atan(y/x)*180.0/pi;
-}
-
 double* orthonormal_projection(double *v, double *w) {
   double* result = create_vector();  
   double v_dot_w = dot(v,w);
@@ -114,16 +88,34 @@ double* cross(double* v, double* w) {
   return result;
 }
 
-/* Matrices */
-
-void print_matrix(double** A) {
-  for(int i=0;i<3;i++) {
-    printf("[");
-    for(int j=0;j<3;j++) {
-      printf(" %.3f ",A[i][j]);
-    }
-    printf("]\n");
+void print_vector(double* v ) {
+  printf("[");
+  for(int i=0;i<3;i++) { 
+    printf(" %.3f ", v[i]);
   }
+  printf("]\n");
+}
+
+/******************
+ * Matrix Methods *
+ ******************/
+
+double** create_matrix(double val) {
+  // when val is 0.0 it is a zero matrix, when 1.0 it's an identity matrix
+  double** matrix = malloc(3 * sizeof(double*));
+  matrix[0] = malloc(3*sizeof(double));
+  matrix[1] = malloc(3*sizeof(double));
+  matrix[2] = malloc(3*sizeof(double));
+  for(int i=0; i<3; i++) {
+    for(int j=0; j<3; j++) {
+      if(i == j) {
+	matrix[i][j] = val;
+      } else {
+	matrix[i][j] = 0.0;
+      }
+    }
+  }
+  return matrix;
 }
 
 double* matvec_product(double** A, double* x) {
@@ -181,6 +173,32 @@ double trace(double** A) {
   return Tr;
 }
 
+void print_matrix(double** A) {
+  for(int i=0;i<3;i++) {
+    printf("[");
+    for(int j=0;j<3;j++) {
+      printf(" %.3f ",A[i][j]);
+    }
+    printf("]\n");
+  }
+}
+
+/*****************
+ * Angle Methods *
+ *****************/
+
+double arccos(double x) {
+  return acos(x)*180.0/pi;
+}
+
+double get_angle(double *v, double* w) {
+  return acos(dot(v,w)/(norm(v)*norm(w)))*180.0/pi;
+}
+
+double argument(double x, double y) {
+  return atan(y/x)*180.0/pi;
+}
+
 double* compute_euler_angles(double** R) {
   // compute Euler angles from rotation matrix
   // based on math from: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
@@ -213,7 +231,7 @@ double* compute_euler_vector(double** R) {
   omega[1] = (R[0][2] - R[2][0])/(2.0*sin(theta));
   omega[2] = (R[1][0] - R[0][1])/(2.0*sin(theta));  
   double* EV = scale_vector(omega,theta);
-  //double* EV = create_vector();
+  //print_vector(EV);
   return EV;
 }
 

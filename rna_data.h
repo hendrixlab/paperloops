@@ -2,7 +2,7 @@
  * This library contains the definitions of structures and functions for implementing
  * the RNA data structure
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
  */
 
 #ifndef _RNA_DATA

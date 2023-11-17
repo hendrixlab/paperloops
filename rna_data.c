@@ -3,7 +3,7 @@
  * This library contains the definitions of structures and functions for implementing
  * the RNA data structure
  *
- * author: David Hendrix david.hendrix@oregonstate.edu
+ * (C) 2023 David Hendrix david.hendrix@oregonstate.edu
  */
 
 #include <stdio.h>
@@ -404,9 +404,9 @@ void add_base_atom(struct rna_model* RNA_model, struct atom* a) {
   RNA_model->last_chain->sentinel->prev->size++;
 }
 
-/******************************************************** 
+/************************************************************** 
  * Functions to access elements from RNA_model data structure *
- ********************************************************/
+ **************************************************************/
 
 struct chain* get_first_chain(struct rna_model* RNA_model) {
   assert(RNA_model);
@@ -1054,10 +1054,11 @@ void set_chain_nuc_array(struct chain* chain) {
       for(int i=prev_num;i<n->num;i++) {
 	nuc_array[i] = NULL; // set all intervening indices to NULL
       }
-      prev_num = n->num+1; // start one more than store  (and allow starting at 0)
+      prev_num = n->num+1; // start one more than store (and allow starting at 0)
       n = next_nuc(chain,n);
     }
     chain->nuc_array = nuc_array;
+    printf("nuc_array completed.\n");
   } else {
     printf("Error: chain has length zero.\n");
     exit(0);
