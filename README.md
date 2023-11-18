@@ -1,3 +1,5 @@
+paperloops: Polymer Adjacency Probability-based Energies for RNA Loops
+
 author: David Hendrix
 email: david.hendrix@oregonstate.edu
 
