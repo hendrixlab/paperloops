@@ -1,11 +1,14 @@
+import sys, os
+from brewer2mpl import diverging
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
-import sys, os
-from brewer2mpl import diverging
 
 def length(label):
     return sum([int(L) for L in label.split('-')])
+
+def number(label):
+    return len(label.split('-'))
 
 def rotate(label):
     terms = label.split('-')
@@ -18,15 +21,18 @@ def rotate(label):
     return rotation
 
 def get_rep_label(label):
-    terms = label.split('-')
-    rep_label = label
-    for i in range(len(terms)):
-        label = rotate(label)
-        if label < rep_label:
-            rep_label = label
+    if '-' in label:
+        terms = label.split('-')
+        rep_label = label
+        for i in range(len(terms)):
+            label = rotate(label)
+            if label < rep_label:
+                rep_label = label
+    else:
+        return label                
     return rep_label
     
-def read_results_file(results_file):
+def read_all_results_file(results_file):
     bmap = diverging.RdYlBu[11]
     colors = bmap.hex_colors
     F = open(results_file)
@@ -43,48 +49,74 @@ def read_results_file(results_file):
                 else:
                     print("could not find in colors:",length(label))
                     exit()
-                n = len(label.split('-'))
+                n = number(label)
                 if n not in data:
                     Nloops.append(n)
                     data[n] = {}
                     labels[n] = []
-                if label != '0':                    
-                    if n > 1:
-                        # append to lexicographically lowest rotation
-                        label = get_rep_label(label)
-                    if label not in data[n]:
-                        # label should be changed to rep_label if n>2
-                        labels[n].append(label)
-                        data[n][label] = []
-                    else:
-                        if float(C_eff_err) != 0.0:
-                            data[n][label].append((float(C_eff),float(C_eff_err),float(C_eff)/float(C_eff_err),color))
-                        else:
-                            data[n][label].append((float(C_eff),float(C_eff_err),0.0,color))
+                #print("loading all data for n =",n);
+                # append to lexicographically lowest rotation
+                label = get_rep_label(label)
+                if label not in data[n]:
+                    # label should be changed to rep_label if n>2
+                    labels[n].append(label)
+                    data[n][label] = []
+                #print("storing data for:",label)
+                if float(C_eff_err) != 0.0:
+                    data[n][label].append((float(C_eff),float(C_eff_err),float(C_eff)/float(C_eff_err),color))
+                else:
+                    data[n][label].append((float(C_eff),float(C_eff_err),0.0,color))
     return data,labels,Nloops
 
-usage = "Usage: " + sys.argv[0] + " <C_eff_all_results.txt>"
 
-if len(sys.argv) != 2:
+def read_results_file(results_file):
+    F = open(results_file)
+    plt_data = {}
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            label,C_eff,C_eff_err = line.split('\t')
+            n = number(label)
+            if n not in plt_data:
+                plt_data[n] = []
+            plt_data[n].append((label,float(C_eff),float(C_eff_err)))
+    return plt_data
+
+########
+# MAIN #
+########
+
+usage = "Usage: " + sys.argv[0] + " <C_eff_all_results.txt> <C_eff_results.txt>"
+
+if len(sys.argv) != 3:
     print(usage)
     exit(0)
 
-results_file = sys.argv[1]
+all_results_file = sys.argv[1]
+results_file = sys.argv[2]
 
-data,labels,Nloops = read_results_file(results_file)
+data,labels,Nloops = read_all_results_file(all_results_file)
+plt_data = read_results_file(results_file)
 
-fig,axs = plt.subplots(nrows=len(Nloops), figsize=(20,15))
+fig_sizes = {1:(5,5), 2:(10,5), 3:(15,5), 4:(20,5)}
 
 for n in Nloops:
+    plt.figure(figsize=fig_sizes[n])
+    x_labels,y_values,y_err = zip(*plt_data[n])    
+    if n==1:
+        plt.errorbar(range(len(x_labels)),y_values,y_err)
     for i in range(len(labels[n])):
         total = len(data[n][labels[n][i]])
-        C_eff,C_eff_err,sizes,colors = zip(*data[n][labels[n][i]])
-        axs[n-1].scatter(total*[i],C_eff,s=sizes,c=colors,alpha=0.5,edgecolors=None)
-    axs[n-1].set_yscale('log')
-    axs[n-1].set_xticks(range(len(labels[n])))
-    axs[n-1].set_xticklabels(labels[n],rotation=90, fontsize=8)
-    axs[n-1].set_xlabel("loop types")
-
-fig.supylabel("Estimated effective concentration (M)")
-
-plt.savefig('Nearest_Neighbor_Circularization_C_eff.pdf',bbox_inches='tight')
+        if(total):
+            C_eff,C_eff_err,sizes,colors = zip(*data[n][labels[n][i]])
+            plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=0.5,edgecolors=None)
+        else:
+            print("Found no examples in all_results: ",labels[n][i])
+            exit()
+    plt.yscale('log')
+    x_values = range(len(labels[n]))
+    plt.xticks(x_values,labels[n],rotation=90, fontsize=8)
+    plt.xlabel("loop motifs lengths (nt)")
+    plt.ylabel("Estimated effective concentration (M)")    
+    plt.savefig('NN_Circularization_C_eff_n'+str(n)+'.pdf',bbox_inches='tight')
+    plt.clf()
