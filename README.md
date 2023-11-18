@@ -8,13 +8,13 @@ translated/derived from code with permission and in collaboration with Rhiju Das
 
 
 
-Compile:
+_Compile_:
 
 make clean
 
 make
 
-Run examples:
+_Run examples_:
 
 ./test2_list_motifs data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt 
 
