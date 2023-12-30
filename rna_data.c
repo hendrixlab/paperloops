@@ -1076,6 +1076,16 @@ struct bp_array* create_bp_array(int size) {
   return bp_array;
 }
 
+void free_bp_array(struct bp_array* bp_array) {
+  assert(bp_array);
+  for(int i=0; i<get_bp_array_size(bp_array); i++) {
+    struct bp* bp = get_bp(bp_array,i);
+    free_bp(bp);
+  }
+  free(bp_array->data);
+  free(bp_array);
+}
+
 struct bp* create_bp(char chain_id1, char chain_id2, int pos1, int pos2) {
   struct bp* bp = malloc(sizeof(struct bp));
   bp->chain_id1 = chain_id1;
@@ -1083,6 +1093,11 @@ struct bp* create_bp(char chain_id1, char chain_id2, int pos1, int pos2) {
   bp->pos1 = pos1;
   bp->pos2 = pos2;
   return bp;
+}
+
+void free_bp(struct bp* bp) {
+  assert(bp);
+  free(bp);
 }
 
 int get_bp_array_size(struct bp_array* bp_array) {

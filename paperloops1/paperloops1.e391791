@@ -1,0 +1,9 @@
+ 	Full Command:                      ./test5_sample_C_eff data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt 
+	Memory (kb):                       2977800 
+	# SWAP  (freq):                    0 
+	# Waits (freq):                    43558 
+	CPU (percent):                     79% 
+	Time (seconds):                    337.50 
+	Time (hh:mm:ss.ms):                5:37.50 
+	System CPU Time (seconds):         4.82 
+	User   CPU Time (seconds):         264.59 

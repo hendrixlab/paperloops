@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
   int L_max = 8;
   int N_iter = 200;
   // actual motifs built with efficient algorithm
-  struct motif_group*** M = build_motif_list(N_loops,L_max);
+  struct motif_group*** M = build_motif_lib(N_loops,L_max);
   // theoretical lengths based on equation
   int** N = necklace_counts_fixed_length(N_loops,L_max);
  

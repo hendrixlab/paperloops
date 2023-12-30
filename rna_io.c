@@ -90,13 +90,11 @@ char extract_chain_id(char* line) {
 
 int read_model_count(FILE* F) {
   char line[MAX_LINE_LENGTH];
-  char rec_type[6]; // the max length for a record type is 6
   
   int model_count = 1; // one model by default 
   while(fgets(line,MAX_LINE_LENGTH,F)) {
-    strncpy(rec_type,line,6);
-    if(strcmp(rec_type,"MODEL ") == 0) {
-      // MODEL        1                                                                  
+    if(strncmp(line,"MODEL ",6) == 0) {
+      // MODEL        1                                                       
       char model_num_str[5];
       sprintf(model_num_str,"%.4s",line+11); // model serial number at positions 11-14
       int model_num = atoi(model_num_str);
@@ -112,7 +110,6 @@ int read_model_count(FILE* F) {
 
 int* read_model_locs(FILE* F, struct rna_data* RNA) {
   char line[MAX_LINE_LENGTH];
-  char rec_type[6]; // the max length for a record type is 6
   int FOUND_MODEL = 0;
   int FOUND_ATOM = 0;
 
@@ -126,15 +123,14 @@ int* read_model_locs(FILE* F, struct rna_data* RNA) {
 
   // read the model locations
   while(fgets(line,MAX_LINE_LENGTH,F)) {
-    strncpy(rec_type,line,6);
-    if(strcmp(rec_type,"ATOM  ") == 0) {
+    if(strncmp(line,"ATOM  ",6) == 0) {
       if(!FOUND_MODEL && !FOUND_ATOM) {
 	FOUND_ATOM = 1;
 	int model_num = 0;
 	int offset = ftell(F) - strlen(line);
 	set_model_loc(RNA,model_num,offset);
       }
-    } else if(strcmp(rec_type,"MODEL ") == 0) {
+    } else if(strncmp(line,"MODEL ",6) == 0) {
       // MODEL        1                                                                  
       FOUND_MODEL = 1;
       char model_num_str[5];
@@ -149,14 +145,12 @@ int* read_model_locs(FILE* F, struct rna_data* RNA) {
 
 int read_chain_count(FILE* F, struct rna_data* RNA, int model_num) {
   char line[MAX_LINE_LENGTH];
-  char rec_type[6]; // the max length for a record type is 6
   fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
   char prev_chain_id = '?';
   int COUNT1 = 0;
   int COUNT2 = 0; // second method of counting: double checking
   while(fgets(line,MAX_LINE_LENGTH,F)) {
-    strncpy(rec_type,line,6);
-    if(strcmp(rec_type,"ATOM  ") == 0) {
+    if(strncmp(line,"ATOM  ",6) == 0) {
       char chain_id = extract_chain_id(line);
       if(prev_chain_id == '?') {
 	prev_chain_id = chain_id;
@@ -166,9 +160,9 @@ int read_chain_count(FILE* F, struct rna_data* RNA, int model_num) {
 	COUNT1++; // add for all other chains
 	prev_chain_id = chain_id;
       }
-    } else if(strcmp(rec_type,"TER   ")) {
+    } else if(strncmp(line,"TER   ",6)) {
       COUNT2++;
-    } else if(strcmp(rec_type,"ENDMDL") == 0) {
+    } else if(strncmp(line,"ENDMDL",6) == 0) {
       break;
     }
   }
@@ -181,7 +175,6 @@ int read_chain_count(FILE* F, struct rna_data* RNA, int model_num) {
 
 struct rna_data* read_pdb_file(char* input_file_name) {
   char line[MAX_LINE_LENGTH];
-  char rec_type[6]; // the max length for a record type is 6
   
   FILE* F = fopen(input_file_name,"r");
   if(F == NULL) {
@@ -194,15 +187,13 @@ struct rna_data* read_pdb_file(char* input_file_name) {
   read_model_locs(F, RNA);
   allocate_rna_models(RNA);
   
-  for(int model_num=0; model_num< get_model_count(RNA); model_num++) {
+  for(int model_num=0; model_num < get_model_count(RNA); model_num++) {
     //int chain_count = read_model_chain_count(FILE,RNA,model_num); // get the number of chains for this model
     struct rna_model* RNA_model = create_model(); // create RNA_model
     // loop through the model locations and read in data: 
     fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
     while(fgets(line,MAX_LINE_LENGTH,F)) {
-      strncpy(rec_type,line,6);
-      if((strcmp(rec_type,"ATOM  ") == 0)||(strcmp(rec_type,"HETATM") == 0)) {
-	//if(strcmp(rec_type,"ATOM  ") == 0) {
+      if((strncmp(line,"ATOM  ",6) == 0)||(strncmp(line,"HETATM",6) == 0)) {
 	char chain_id = extract_chain_id(line);
 	if(new_chain_id(RNA_model,chain_id)) {
 	  printf("Found new chain: %c\n",chain_id);
@@ -225,10 +216,10 @@ struct rna_data* read_pdb_file(char* input_file_name) {
 	struct atom* a = create_atom(atom_num,atom_name,r);
 	add_atom(RNA_model,a);
 	//printf("added atom: %s\n",atom_name);
-      } else if(strcmp(rec_type,"TER   ") == 0) {
+      } else if(strncmp(line,"TER   ",6) == 0) {
 	// expecting end of chain
 	;
-      } else if(strcmp(rec_type,"ENDMDL") == 0) {
+      } else if(strncmp(line,"ENDMDL",6) == 0) {
 	break; // end of model
       }
     }
@@ -246,11 +237,22 @@ struct rna_data* read_pdb_file(char* input_file_name) {
  * base pair reading methods *
  *****************************/
 
-struct split_text*  split_line(char *line, char *delim) {
+struct split_text* create_split_text() {
   struct split_text* row = malloc(sizeof(struct split_text));
   row->term = NULL;
-  int n = 0;
+  row->cols = 0;
+  return row;
+}
 
+void free_split_text(struct split_text* row) {
+  free(row->term);
+  free(row);
+}
+
+struct split_text* split_line(char *line, char *delim) {
+  struct split_text* row = create_split_text();
+  int n = 0;
+  
   char *token = strtok(line, delim);
   while( token != NULL ) {
     row->term = realloc(row->term, (n+1)*sizeof(char*));
@@ -273,6 +275,7 @@ int count_basepairs(FILE* F) {
 	size++;
       }
     }
+    free_split_text(row);
   }
   return size;
 }
@@ -310,9 +313,12 @@ struct bp_array* read_basepair_file(char *basepair_file) {
 	} else {
 	  printf("Unexpected situation in basepair file: %s",basepair_file);
 	}
+	free_split_text(bp1_info);
+	free_split_text(bp2_info);
 	count++;
       }
     }
+    free_split_text(row);
   }
   printf("reading basepair file complete.\n");
   return bp_array;

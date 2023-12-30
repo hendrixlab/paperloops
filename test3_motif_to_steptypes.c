@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
   int N_loops = 8;
   int L_max = 10;
   // actual motifs built with efficient algorithm
-  struct motif_group*** M = build_motif_list(N_loops,L_max);
+  struct motif_group*** M = build_motif_lib(N_loops,L_max);
  
   for(int n=1; n<=N_loops; n++) {
     for(int L=0; L<=L_max; L++) {

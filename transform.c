@@ -39,9 +39,9 @@ struct library {
   int cap;
 };
 
-/*
- * Tools for transform libraries
- */
+/*********************************
+ * Tools for transform libraries *
+ *********************************/
 
 struct library* create_library() {
   struct library* lib = malloc(sizeof(struct library));
@@ -56,7 +56,11 @@ struct library* create_library() {
 }
 
 void free_library(struct library* lib) {
-  assert(lib);
+  assert(lib);  
+  for(int i=0; i<library_size(lib); i++) {
+    struct transform* T = get_transform(lib,i);
+    free_transform(T);
+  }
   free(lib->data);
   free(lib);
 }
@@ -128,31 +132,55 @@ void append_transform(struct library* lib, struct transform* T) {
   lib->len++;
 }
 
-/*
- * Methods for frames
- */
+/**********************
+ * Methods for frames *
+ **********************/
 
 struct frame* create_frame() {
-  struct frame* f = malloc(sizeof(struct frame*));
+  struct frame* f = malloc(sizeof(struct frame));
   f->ctr = create_vector(); // vector of zeros, placeholer
   f->M = create_matrix(1.0); // identity matrix, placeholder
   return f;
 }
 
+void free_frame(struct frame* f) {
+  assert(f);
+  free_vector(f->ctr);
+  free_matrix(f->M);
+  free(f);
+}
+  
 struct frame* get_frame(struct nuc* n) {
   struct frame* f = create_frame();
+  // compute frame translation and rotation
   struct atom* a = get_backbone_atom_by_name(n,"C5'"); 
   struct atom* b = get_backbone_atom_by_name(n,"C4'"); 
   struct atom* c = get_backbone_atom_by_name(n,"C3'");
-  double* z = normalize(subtract(atom_coord(b),atom_coord(a)));
-  double* y = normalize(cross(z,subtract(atom_coord(c),atom_coord(b))));
-  double* x = normalize(cross(y,z));
-  f->ctr = atom_coord(a);
+  // compute x,y, and z axes from a,b,c
+  double* b_minus_a = subtract(atom_coord(b),atom_coord(a));
+  double* z = normalize(b_minus_a);
+  double* c_minus_b = subtract(atom_coord(c),atom_coord(b));
+  double* cross_prod1 = cross(z,c_minus_b);
+  double* y = normalize(cross_prod1);
+  double* cross_prod2 = cross(y,z);
+  double* x = normalize(cross_prod2);
+  // build frame orientation matrix from x, y and z
   double** M = create_matrix(1.0);
-  M[0] = x;
-  M[1] = y;
-  M[2] = z;
-  f->M = transpose(M);
+  set_matrix_rows(M,x,y,z);
+  double** M_T = transpose(M);
+  // define the frame values:
+  set_vector(f->ctr,atom_coord(a));
+  set_matrix(f->M,M_T);
+  // some memory cleanup:
+  free_vector(b_minus_a);
+  free_vector(c_minus_b);
+  free_vector(cross_prod1);
+  free_vector(cross_prod2);
+  free_vector(x);
+  free_vector(y);
+  free_vector(z);
+  free_matrix(M);
+  free_matrix(M_T);
   return f;
 }
 
@@ -168,31 +196,72 @@ struct transform* create_transform() {
   return T;
 }
 
+void free_transform(struct transform* T) {
+  assert(T);
+  free_vector(T->t);
+  free_matrix(T->R);
+  free_vector(T->EV);
+  free(T);
+}
+
+double** get_rotation_matrix(struct transform* T) {
+  return T->R;
+}
+
+struct transform* copy_transform(struct transform* T) {
+  struct transform* T_copy = create_transform();
+  set_vector(T_copy->t,T->t);
+  set_matrix(T_copy->R,T->R);
+  set_vector(T_copy->EV,T->EV);
+  return T_copy;
+}
+
 struct transform* compute_transform(struct frame* f1, struct frame* f2) {
   struct transform* T = create_transform();
   double** M1_inverse = inverse(f1->M);
-  T->t = matvec_product(M1_inverse,subtract(f2->ctr,f1->ctr));
-  T->R = matmat_product(M1_inverse,f2->M);
+  double* ctr_diff = subtract(f2->ctr,f1->ctr);
+  double* t = matvec_product(M1_inverse,ctr_diff);
+  double** R = matmat_product(M1_inverse,f2->M);
+  set_vector(T->t,t);
+  set_matrix(T->R,R);
+  free_vector(ctr_diff);
+  free_vector(t);
+  free_matrix(M1_inverse);
+  free_matrix(R);
   return T;
 }
 
 struct transform* apply_transform(struct transform* x1, struct transform* T) {
   struct transform* x2 = create_transform();
-  x2->t = add(x1->t,matvec_product(x1->R,T->t));
-  x2->R = matmat_product(x1->R,T->R);
+  double* R_times_t = matvec_product(x1->R,T->t);
+  double* t = add(x1->t,R_times_t);
+  double** R = matmat_product(x1->R,T->R);
+  set_vector(x2->t,t);
+  set_matrix(x2->R,R);
+  free_vector(R_times_t);
+  free_vector(t);
+  free_matrix(R);
   return x2;
 }
 
 struct transform* reverse_transform(struct transform* T) {
   struct transform* T_rev = create_transform();
-  T_rev->t = matvec_product(inverse(T->R),scale_vector(T->t,-1.0)); // transpose should work and seems faster
-  T_rev->R = inverse(T->R);
+  double** R_inv = inverse(T->R);
+  double* t_neg = scale_vector(T->t,-1.0);
+  double* t_rev = matvec_product(R_inv,t_neg); // transpose should work and seems faster
+  set_vector(T_rev->t,t_rev);
+  set_matrix(T_rev->R,R_inv);
+  free_vector(t_neg);
+  free_vector(t_rev);
+  free_matrix(R_inv);
   return T_rev;
 }
 
 void set_euler_vector(struct transform* T) {
   // calling function in vectorfun.c
-  T->EV = compute_euler_vector(T->R);  
+  double* EV = compute_euler_vector(T->R);
+  set_vector(T->EV,EV);
+  free_vector(EV);
 }
 
 double* get_euler_vector(struct transform* T) {
@@ -248,14 +317,18 @@ void print_transform_T6(struct transform* x) {
   printf("]\n");
 }
 
-/* processing biophysical data to compute transforms */
+/*****************************************************
+ * processing biophysical data to compute transforms *
+ *****************************************************/
 
 int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
   struct atom* a1 = get_last_backbone_atom(n1);
   struct atom* a2 = get_first_backbone_atom(n2);
   if(a1 && a2) {
     if((strcmp(atom_name(a1),"O3'") == 0)&&(strcmp(atom_name(a2),"P") == 0)) {
-      double d = norm(subtract(atom_coord(a1),atom_coord(a2)));
+      double* diff = subtract(atom_coord(a1),atom_coord(a2));
+      double d = norm(diff);
+      free_vector(diff);
       if(d < 2) {
 	return 1;
       }    
@@ -286,6 +359,8 @@ struct library* build_backbone_transform_library(struct rna_data* RNA) {
 	  struct frame* f2 = get_frame(n2);
 	  struct transform* T = compute_transform(f1,f2);
 	  append_transform(backbone_library,T);
+	  free_frame(f1); // free memory of each frame after use
+	  free_frame(f2);
 	}
 	n1 = n2;
 	n2 = next_nuc(chain,n1);	   
@@ -318,8 +393,8 @@ struct library* build_basepair_transform_library(struct rna_data* RNA, struct bp
       struct frame* f2 = get_frame(n2);
       struct transform* T = compute_transform(f1,f2);
       append_transform(basepair_library,T);
-      //struct transform* T2 = compute_transform(f2,f1);
-      //append_transform(basepair_library,T2);
+      free_frame(f1);
+      free_frame(f2);
     }
   }
   printf("found %d base pairs.\n",library_size(basepair_library));

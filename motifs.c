@@ -34,9 +34,9 @@ struct motif {
 
 // this is a group of loop motifs, used for recursively building libraries
 struct motif_group {
-  struct motif** data;
+  struct motif** data; // array of pointers to motifs
   int count; // current number of motifs
-  int size; // should have a defined size
+  int size; // should have a defined size/capacity >= count
   int N; // number of loops in motif group
   int L; // total length of all loops in each motif
 };
@@ -49,7 +49,7 @@ struct motif_library {
 };
 
 // this is a "steptype" motif, translated from loop motif
-// but is now a series of "bp" and "bb" transitions
+// but is now a series of "BP" and "BB" transitions
 struct steptypes {
   char** steps;
   int length;
@@ -67,11 +67,16 @@ int* create_rep_array(int len, int val) {
 
 // this is creating a list, which is a dynamic array
 struct list* create_list() {
-  struct list* list = malloc(sizeof(list));
-  list->cap = 1;
-  list->len = 0;
-  list->data = malloc((list->cap)*sizeof(int));
-  return list;
+  struct list* L = malloc( sizeof(struct list) );
+  L->cap = 1;
+  L->len = 0;
+  L->data = malloc((L->cap) * sizeof(int));
+  return L;
+}
+
+void free_list(struct list* list) {
+  free(list->data);
+  free(list);
 }
 
 // append to a list, update length as needed 
@@ -82,6 +87,7 @@ void list_append(struct list* list, int n) {
     for(int i=0; i<list->len; i++) {
       new_data[i] = list->data[i];
     }
+    free(list->data);
     list->data = new_data;
     list->cap = new_cap;
   }
@@ -124,12 +130,10 @@ struct list* get_divisors(int n) {
   // return the divisors of n
   int* divides = create_rep_array(n+1,0);
 
-  int total = 0;
-  for(int i=1; i<=n; i++) {
+   for(int i=1; i<=n; i++) {
     if(n % i == 0) {
       divides[i] = 1;
-      total++;
-    }
+     }
   }
   struct list* divisors = create_list();
   for(int i=1; i<=n; i++) {
@@ -203,8 +207,8 @@ int binomial(int n, int k) {
  * Tools for theoretical enumeration of loop motifs *
  *****************************************************/
 
-// this is the M(n,L) function, counts loops of n branches that sum to L
 int aperiodic_necklace_counts_fixed_length(int n, int L, struct list* divisors, struct list* primes) {
+  // this is the M(n,L) function, counts loops of n branches that sum to L that are equivalent under rotation
   int sum = 0;
   for(int i=0; i<list_length(divisors); i++) {
     int d = divisors->data[i];
@@ -215,14 +219,26 @@ int aperiodic_necklace_counts_fixed_length(int n, int L, struct list* divisors, 
   return sum/n;  
 }
 
-// this is the N(n,L) function, Counts all loops of n branches, periodic and not, that sum to L
-int** necklace_counts_fixed_length(int N_loops, int L_max) {
-  int** M = malloc(sizeof(int*) * (N_loops+1));
+int** create_necklace_counts(int N_loops, int L_max) {
   int** N = malloc(sizeof(int*) * (N_loops+1));
   for(int n=0; n<=N_loops; n++) {
-    M[n] = malloc(sizeof(int) * (L_max+1));
     N[n] = malloc(sizeof(int) * (L_max+1));
   }
+  return N;
+}
+
+void free_necklace_counts(int** N, int N_loops) {
+  assert(N);
+  for(int n=0; n<=N_loops; n++) {
+    free(N[n]);
+  }
+  free(N);  
+}
+
+int** necklace_counts_fixed_length(int N_loops, int L_max) {
+  // this is the N(n,L) function, counts all loops of n branches, periodic and not, that sum to L
+  int** N = create_necklace_counts(N_loops, L_max);
+  int** M = create_necklace_counts(N_loops, L_max);
   
   struct list* primes = get_primes(N_loops); // all the primes we need =< N_loops
   for(int n=1; n<=N_loops; n++) {
@@ -231,6 +247,7 @@ int** necklace_counts_fixed_length(int N_loops, int L_max) {
       M[n][L] = aperiodic_necklace_counts_fixed_length(n,L,divisors,primes);
       N[n][L] = 0; // initializing N[n,L] updated below
     }
+    free_list(divisors);
   }
   for(int n=1; n<=N_loops; n++) {
     struct list* divisors = get_divisors(n);
@@ -238,11 +255,17 @@ int** necklace_counts_fixed_length(int N_loops, int L_max) {
       for(int i=0; i<list_length(divisors); i++) {
 	int d = divisors->data[i];
 	if((L*d) % n == 0) {
+	  // all necklace counts are the sum of valid periodic and aperiodic counts 
 	  N[n][L] += M[d][L*d/n];
 	}
       }
     }
+    free_list(divisors);
   }
+  // clean up memory
+  free_list(primes);
+  free_necklace_counts(M,N_loops);
+  // return N where N[n][L] = number of necklaces with n loops totalling L
   return N;
 }
 
@@ -256,6 +279,12 @@ struct motif* create_motif(int num) {
   motif->loop = malloc(sizeof(int)*num);
   motif->next = NULL;
   return motif;
+}
+
+void free_motif(struct motif* motif) {
+  assert(motif);
+  free(motif->loop);
+  free(motif);
 }
 
 void initialize_motif(struct motif* motif, int loop) {
@@ -355,7 +384,8 @@ struct motif* expand_motif(struct motif* motif, int new_loop, int L_max) {
 }
 
 struct motif* rotate_motif(struct motif* motif, int L_max) {
-  // adds to a motif a new loop length
+  // rotates motif, x0-x1-x2-...-xn -> x1-x2-...-xn-x0
+  // can not free incoming motif here because stored in build_motif_lib(). Must free at end of program run
   int num = get_motif_num(motif);
 
   struct motif* rot_motif = create_motif(num);
@@ -394,7 +424,7 @@ struct motif_group* create_motif_group(int size) {
   struct motif_group* motif_group = malloc(sizeof(struct motif_group));  
   motif_group->count = 0;  
   motif_group->size = size;
-  motif_group->data = calloc(size, sizeof(struct motif*));
+  motif_group->data = calloc(size, sizeof(struct motif*)); // array of pointers to motifs
   //for(int i=0;i<size;i++) motif_group->data[i] = NULL; 
   return motif_group;
 }
@@ -468,14 +498,39 @@ void append_motif(struct motif_group* motif_group, struct motif* motif) {
 }
 
 struct motif_group*** create_motif_lib(int N_loops, int L_max) {
+  // motif_group array keyed by both number of loops n and the total length L
   struct motif_group*** motif_lib = malloc((N_loops+1)*sizeof(struct motif_group**));
-  for(int n=0;n<=N_loops;n++) {
+  for(int n=0; n<=N_loops; n++) {
     motif_lib[n] = malloc((L_max+1)*sizeof(struct motif_group*));
     for(int L=0; L<=L_max; L++) {
       motif_lib[n][L] = create_motif_group(1);
     }
   }
   return motif_lib;
+}
+
+void free_motif_lib(struct motif_group*** motif_lib, int N_loops, int L_max) {
+  // a motif lib is a 2D array of motif_groups, indexed by n and L
+  assert(motif_lib);
+  for(int n=0; n<=N_loops; n++) { // number of loops n
+    for(int L=0; L<=L_max; L++) { // total length of loops L
+      // here is the only place we explicitly go through and free the individual motifs
+      for(int i=0; i<get_motif_group_size(motif_lib[n][L]); i++) {
+	struct motif* motif = get_motif(motif_lib[n][L],i);
+	if(motif) {
+	  while(get_next_motif(motif)) {
+	    struct motif* next_motif = get_next_motif(motif);
+	    free_motif(motif);
+	    motif = next_motif;
+	  }
+	  free_motif(motif);
+	}
+      }
+      free_motif_group(motif_lib[n][L]);
+    }
+    free(motif_lib[n]);
+  }
+  free(motif_lib);
 }
 
 struct motif_group** create_motif_list(int N_loops, int L_max) {
@@ -486,7 +541,15 @@ struct motif_group** create_motif_list(int N_loops, int L_max) {
   return motif_list;
 }
 
-struct motif_group*** build_motif_list(int N_loops, int L_max) {
+void free_motif_list(struct motif_group** motif_list, int N_loops) {
+  // motif list is an array of motif groups, indexed by the number of loops "n"
+  for(int n=0; n<=N_loops; n++) {
+    free_motif_group(motif_list[n]);
+  }
+  free(motif_list);
+}
+
+struct motif_group*** build_motif_lib(int N_loops, int L_max) {
   // create data structures
   struct motif_group** motif_list = create_motif_list(N_loops,L_max); // indexed by n only, all motifs for that n
   struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max); // indexed by n and L, only "lowest" rotation
@@ -532,8 +595,12 @@ struct motif_group*** build_motif_list(int N_loops, int L_max) {
       }
     }
     qsort(motif_ids->data,list_length(motif_ids),sizeof(int),compare);
+    free_list(prev_motif_ids); // this should free memory allocated for motif_ids b/c of next line
     prev_motif_ids = motif_ids;
   }
+  // memory clean-up
+  free_list(prev_motif_ids);
+  free_motif_list(motif_list,N_loops);
   return motif_lib;
 }
 
@@ -555,6 +622,12 @@ struct steptypes* create_steptypes(int length) {
   steptypes->steps = malloc(sizeof(char*)*length);
   steptypes->length = length;
   return steptypes;  
+}
+
+void free_steptypes(struct steptypes* steps) {
+  assert(steps);
+  free(steps->steps);
+  free(steps);
 }
 
 struct steptypes* motif_to_steptypes(struct motif* motif) {
@@ -608,12 +681,11 @@ struct steptypes* rotate_steptypes(struct steptypes* steptypes) {
     steptypes_set(rotation,i-1,steptypes_get(steptypes,i));
   }
   steptypes_set(rotation,length-1,steptypes_get(steptypes,0));
+  free_steptypes(steptypes); // free the incoming steptypes
   return rotation;
 }
 
 struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end) {
-  //printf("splice attempt: %d %d, new_len=%d\n",start,end,end-start+1);
-  //fflush(stdout);
   struct steptypes* substeps = create_steptypes(end-start+1); // positions are inclusive
   if(0 <= start && end < steptypes_length(steptypes)) {
     for(int i=start; i<=end; i++) {

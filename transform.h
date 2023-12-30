@@ -43,6 +43,9 @@ struct frame* get_frame(struct nuc* n);
 
 // transform tools
 struct transform* create_transform();
+void free_transform(struct transform* T);
+double** get_rotation_matrix(struct transform* T);
+struct transform* copy_transform(struct transform* T);
 struct transform* compute_transform(struct frame* f1, struct frame* f2);
 void set_euler_vector(struct transform* T);
 double* get_euler_vector(struct transform* T);

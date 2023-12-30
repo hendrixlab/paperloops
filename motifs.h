@@ -33,6 +33,7 @@ struct steptypes;
 
 int* create_rep_array(int len, int val);
 struct list* create_list();
+void free_list(struct list* list);
 void list_append(struct list* list, int n);
 int list_length(struct list* list);
 void print_list(struct list* list, char* title);
@@ -42,8 +43,14 @@ int mobius(int n, struct list*  primes);
 int binomial(int n, int k);
 int count_necklaces_fixed_sum(int n, int L);
 int aperiodic_necklace_counts_fixed_length(int n, int L, struct list* divisors, struct list* primes);
+int** create_necklace_counts(int N_loops, int L_max);
+void free_necklace_counts(int** N, int N_loops);
 int** necklace_counts_fixed_length(int N_loops, int L_max);
+
+// motif tools 
+
 struct motif* create_motif(int num);
+void free_motif(struct motif* motif);
 void initialize_motif(struct motif* motif, int loop);
 void set_motif_loop(struct motif* motif, int idx, int loop);
 void set_motif_id(struct motif* motif, int id);
@@ -69,13 +76,18 @@ int get_motif_group_size(struct motif_group* motif_group);
 int get_motif_group_count(struct motif_group* motif_group);
 struct motif* get_motif(struct motif_group* motif_group, int idx);
 void add_motif(struct motif_group* motif_group, struct motif* m);
-struct motif_group*** build_motif_list(int N_loops, int L_max);
+struct motif_group*** create_motif_lib(int N_loops, int L_max);
+void free_motif_lib(struct motif_group*** motif_lib, int N_loops, int L_max);
+struct motif_group** create_motif_list(int N_loops, int L_max);
+void free_motif_list(struct motif_group** motif_list, int N_loops);
+struct motif_group*** build_motif_lib(int N_loops, int L_max);
 
 /***********************
  * Tools for Steptypes *
  ***********************/
 
 struct steptypes* create_steptypes(int length);
+void free_steptypes(struct steptypes* steps);
 struct steptypes* motif_to_steptypes(struct motif* motif);
 int steptypes_length(struct steptypes* steptypes);
 char* steptypes_get(struct steptypes* steptypes, int idx);

@@ -107,9 +107,14 @@ void print_backbone_torsions(struct rna_data* RNA);
 void print_sugar_torsions(struct rna_data* RNA);
 void set_rna_nuc_array(struct rna_data* RNA);
 void set_chain_nuc_array(struct chain* RNA_chain);
+
+// bp and bp_array tools
+
 struct bp_array* create_bp_array(int size);
-int get_bp_array_size(struct bp_array* bp_array);
+void free_bp_array(struct bp_array* bp_array);
 struct bp* create_bp(char chain_id1, char chain_id2, int pos1, int pos2);
+void free_bp(struct bp* bp);
+int get_bp_array_size(struct bp_array* bp_array);
 void set_bp(struct bp_array* bp_array, struct bp* bp, int idx);
 struct bp*  get_bp(struct bp_array* bp_array, int idx);
 char get_bp_chain_id(struct bp* bp, int side);

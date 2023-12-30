@@ -22,10 +22,15 @@ struct array {
 
 // this is creating a array, which is a dynamic array
 struct array* create_array(int size) {
-  struct array* array = malloc(sizeof(array));
+  struct array* array = malloc(sizeof(struct array));
   array->size = size;
-  array->data = malloc(size*sizeof(double));
+  array->data = malloc(size * sizeof(double));
   return array;
+}
+
+void free_array(struct array* array) {
+  free(array->data);
+  free(array);
 }
 
 // return the current length of an array
@@ -105,7 +110,8 @@ struct array* get_samples_geometric_mean(struct array* samples1, struct array* s
 struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib) {
   struct library* trace = create_library(); // library to store the trace
   struct transform* x = create_transform(); // the initial point
-  
+  append_transform(trace,x); // add the initial point
+
   for(int i=0; i<steptypes_length(steps); i++) {
     char* step = steptypes_get(steps,i);
     struct transform* T;
@@ -123,26 +129,28 @@ struct library* get_random_trace(struct steptypes* steps, struct library* bb_lib
   return trace;
 }
 
-struct library* get_pts_forward(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
+struct library* get_pts_forward(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
   struct library* pts_fwd = create_library(); // create the library to store the points
-  for(int i=0; i<size; i++) {
+  for(int i=0; i<N_samples; i++) {
     struct library* trace = get_random_trace(steps,bb_lib,bp_lib);
-    struct transform* x = get_transform(trace,-1); // get the last transform in the trace
-    set_euler_vector(x);
-    append_transform(pts_fwd,x);
+    struct transform* T_fwd = copy_transform(get_transform(trace,-1)); // get the last transform in the trace
+    set_euler_vector(T_fwd);
+    free_library(trace);
+    append_transform(pts_fwd,T_fwd);
   }
   return pts_fwd;
 }
 
-struct library* get_pts_reverse(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
-  struct library* pts_fwd = get_pts_forward(steps,bb_lib,bp_lib,size);
+struct library* get_pts_reverse(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
+  struct library* pts_fwd = get_pts_forward(steps,bb_lib,bp_lib,N_samples);
   struct library* pts_rev = create_library();
   for(int i=0; i<library_size(pts_fwd); i++) {
-    struct transform* T = get_transform(pts_fwd,i);
-    struct transform* T_rev = reverse_transform(T);
+    struct transform* T_fwd = get_transform(pts_fwd,i); // T goes from start of steps to end for each replicate
+    struct transform* T_rev = reverse_transform(T_fwd); // reverse it to go from end to start
     set_euler_vector(T_rev);
     append_transform(pts_rev,T_rev);
   }
+  free_library(pts_fwd); // this should free the individual transforms in pts_fwd
   return pts_rev;
 }
 
@@ -160,7 +168,9 @@ struct array* get_kde_bandwidth(struct library* pts) {
   
   for(int i=0; i<d; i++) {
     // the h[i] terms correspond to diagonal terms sqrt(H[i,i]) of a bandwidth matrix
-    array_set(h, i, pow(4/(n*(d+2)),1/(n+4)) * std_dev[i] );
+    array_set(h, i, pow(4.0/(n*(d+2)),1.0/(d+4)) * std_dev[i] );
+    //printf("bw calc: %d %f %f (d=%d,n=%d)\n",i,pow(4.0/(n*(d+2)),1.0/(d+4)), std_dev[i], d, n);
+    //printf("%.6f\n",array_get(h,i));
   }  
   free(std_dev);
   return h;
@@ -179,7 +189,7 @@ double get_kde_probability(struct transform* x, struct library* pts, struct arra
   for(int j=0; j<d; j++) {
     det_bw *= array_get(bandwidth,j);
   }
-  double coeff = pow(2.0*pi,-d/2) / det_bw;
+  double coeff = pow(2.0*pi,-d/2.0) / det_bw;
   
   double sum = 0.0;
   for(int i=0; i<n; i++) {
@@ -203,43 +213,51 @@ double get_kde_probability(struct transform* x, struct library* pts, struct arra
  * Effective Concentration C_eff * 
  *********************************/
 
-struct array* compute_C_eff_samples(struct library* pts_fwd, struct library* pts_rev, struct array* h) {
+struct array* get_C_eff_samples(struct library* pts_fwd, struct library* pts_rev, struct array* h) {
   int N = library_size(pts_rev);
   struct array* C_eff_samples = create_array(N);
   
   for(int i=0; i<N; i++) {
     struct transform* x = get_transform(pts_rev,i);
     double p = get_kde_probability(x, pts_fwd, h);
-    //printf("p=%.6e\n",p);
+    //printf("%.6e\n",p);
+    double* EV = get_euler_vector(x);
+    //printf("%.3f\t%.3f\t%.3f\n",EV[0],EV[1],EV[2]);
     double v = norm(get_euler_vector(x));
+    //printf("%.6f\n",v);
     double w = 1.0;
     if(v != 0.0) {
       double sqrt_w = sin(v/2)/(v/2);
       w = sqrt_w*sqrt_w; // more efficient than pow()
+      //printf("%.6f\n",w);
     }
-    double C_eff = p/(w/(8*pi*pi))/(6.022e23/1e27);
+    double C_eff = p/(w/(8.0*pi*pi))/(6.022e23/1.0e27);
+    double den = (w/(8.0*pi*pi))/(6.022e23/1.0e27);
+    //printf("%.6f\n",C_eff);
     array_set(C_eff_samples,i,C_eff);
   }
   return C_eff_samples;
 }
 
-struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int size) {
+struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
   int length = steptypes_length(steps);
   int halfway = length/2; // should be floored b/c ints
 
   //printf("length=%d, halfway=%d: [%d:%d] [%d:%d]\n",length,halfway,0,halfway-1,halfway,length-1);
   struct steptypes* steps_fwd = steptypes_splice(steps,0,halfway-1);
-  struct library* pts_fwd =  get_pts_forward(steps_fwd,bb_lib,bp_lib,size);
+  struct library* pts_fwd =  get_pts_forward(steps_fwd,bb_lib,bp_lib,N_samples);
   
   struct steptypes* steps_rev = steptypes_splice(steps,halfway,length-1);
-  struct library* pts_rev = get_pts_reverse(steps_rev,bb_lib,bp_lib,size);
+  struct library* pts_rev = get_pts_reverse(steps_rev,bb_lib,bp_lib,N_samples);
   
   struct array* h_fwd = get_kde_bandwidth(pts_fwd);
   struct array* h_rev = get_kde_bandwidth(pts_rev);
 
-  struct array* C_eff_fwd_samples = compute_C_eff_samples(pts_fwd,pts_rev,h_fwd);
-  struct array* C_eff_rev_samples = compute_C_eff_samples(pts_rev,pts_fwd,h_rev);
-  
+  struct array* C_eff_fwd_samples = get_C_eff_samples(pts_fwd,pts_rev,h_fwd);
+  struct array* C_eff_rev_samples = get_C_eff_samples(pts_rev,pts_fwd,h_rev);
+  //printf("%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n",array_get(h_fwd,0),array_get(h_fwd,1),array_get(h_fwd,2),array_get(h_fwd,3),array_get(h_fwd,4),array_get(h_fwd,5));
+  //printf("%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n",array_get(h_rev,0),array_get(h_rev,1),array_get(h_rev,2),array_get(h_rev,3),array_get(h_rev,4),array_get(h_rev,5));
+
   double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples);
   double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples);
   double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(array_size(C_eff_fwd_samples));
@@ -260,9 +278,20 @@ struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib
   // compute error by scaling unitless relative error by the mean
   double C_eff_error = C_eff_relerr * C_eff;
 
+  // set data to be returned 
   struct array* C_eff_stats = create_array(2);
   array_set(C_eff_stats,0,C_eff);
   array_set(C_eff_stats,1,C_eff_error);
+
+  // memory managment
+  free_steptypes(steps_fwd);
+  free_steptypes(steps_rev);
+  free_library(pts_fwd);
+  free_library(pts_rev);
+  free_array(h_fwd);
+  free_array(h_rev);
+  free_array(C_eff_fwd_samples);
+  free_array(C_eff_rev_samples);
   
   return C_eff_stats;
 }

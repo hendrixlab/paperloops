@@ -1,5 +1,5 @@
 import sys, os
-from brewer2mpl import diverging
+from brewer2mpl import diverging, sequential
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -45,7 +45,7 @@ def read_all_results_file(results_file):
             if len(line.split()) == 3:
                 label,C_eff,C_eff_err = line.split('\t')
                 if length(label) not in colors:
-                    color = colors[length(label)]
+                    color = colors[length(label) % 11]
                 else:
                     print("could not find in colors:",length(label))
                     exit()
@@ -98,16 +98,18 @@ results_file = sys.argv[2]
 data,labels,Nloops = read_all_results_file(all_results_file)
 plt_data = read_results_file(results_file)
 
-fig_sizes = {1:(5,5), 2:(10,5), 3:(15,5), 4:(20,5)}
+fig_sizes = {1:(5,2), 2:(10,5), 3:(15,5), 4:(20,5)}
 
 for n in Nloops:
-    #x_labels,y_values,y_err = zip(*plt_data[n])    
     plt.figure(figsize=fig_sizes[n])
+    x_labels,y_values,y_err = zip(*plt_data[n])    
+    if n==1:
+        plt.errorbar(range(len(x_labels)),y_values,y_err)
     for i in range(len(labels[n])):
         total = len(data[n][labels[n][i]])
         if(total):
             C_eff,C_eff_err,sizes,colors = zip(*data[n][labels[n][i]])
-            plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=0.5,edgecolors=None)
+            plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=1.0,edgecolors='black',linewidth=0.1)
         else:
             print("Found no examples in all_results: ",labels[n][i])
             exit()
@@ -115,6 +117,6 @@ for n in Nloops:
     x_values = range(len(labels[n]))
     plt.xticks(x_values,labels[n],rotation=90, fontsize=8)
     plt.xlabel("loop motifs lengths (nt)")
-    plt.ylabel("Estimated effective concentration (M)")    
+    plt.ylabel("Effective concentration (M)")    
     plt.savefig('NN_Circularization_C_eff_n'+str(n)+'.pdf',bbox_inches='tight')
     plt.clf()

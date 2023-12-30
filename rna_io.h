@@ -41,6 +41,10 @@ int* read_model_locs(FILE* F, struct rna_data* RNA);
 
 struct rna_data* read_pdb_file(char* file_name);
 
+struct split_text* create_split_text();
+
+void free_split_text(struct split_text* row);
+
 struct split_text*  split_line(char *line, char *delim);
 
 int count_basepairs(FILE* F);
