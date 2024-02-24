@@ -34,14 +34,14 @@ def main():
     plt.xticks(list(range(1,6+1)),['0-0','0-1','1-0','0-0','0-1','1-0'])
     plt.figtext(0.3, 0.01, "paperloops", wrap=True, horizontalalignment='center', fontsize=12)
     plt.figtext(0.75, 0.01, "toyfold3", wrap=True, horizontalalignment='center', fontsize=12)
-    plt.ylabel('C_eff')
-    plt.savefig('violinplot_C_eff.pdf')
+    #plt.ylabel('C_eff')
+    #plt.savefig('violinplot_C_eff.pdf')
     #plt.ylabel('w')
     #plt.savefig('violinplot_w.pdf')
     #plt.ylabel('v')
     #plt.savefig('violinplot_v.pdf')
-    #plt.ylabel('-log(p)')
-    #plt.savefig('violinplot_p.pdf')
+    plt.ylabel('-log(p)')
+    plt.savefig('violinplot_p.pdf')
     #plt.ylabel('KDE bandwidth')
     #plt.savefig('violinplot_bw.pdf')
     #plt.ylabel('denominator of C_eff calculation')
@@ -68,8 +68,8 @@ def read_paperloops(paperloops_output_file):
             else:
                 print(f"storing data for paperloops: '{motif}'")
                 x = line.strip()
-                #if float(x) != 0.0: data[motif].append(-log(float(x)))
-                if float(x) != 0.0: data[motif].append(float(x))
+                if float(x) != 0.0: data[motif].append(-log(float(x)))
+                #if float(x) != 0.0: data[motif].append(float(x))
     return data
                 
 def read_toyfold3(toyfold3_output_file):
@@ -86,8 +86,8 @@ def read_toyfold3(toyfold3_output_file):
             else:
                 print('storing data for toyfold3:',motif)
                 x = line.strip()
-                #if float(x) != 0.0: data[motif].append(-log(float(x)))
-                if float(x) != 0.0: data[motif].append(float(x))
+                if float(x) != 0.0: data[motif].append(-log(float(x)))
+                #if float(x) != 0.0: data[motif].append(float(x))
     return data
 
 

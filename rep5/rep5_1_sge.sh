@@ -13,6 +13,9 @@
 # Use current working directory
 #$ -cwd
 #
+# Set queue to use
+#$ -q cascade
+#
 #Output files for stdout and stderr
 #$ -o rep5
 #$ -e rep5
@@ -31,5 +34,5 @@ export LD_LIBRARY_PATH=/local/cluster/hdf5-1.8.13/lib:/local/cluster/lib:/local/
 echo "  Started on:           " `/bin/hostname -s` 
 echo "  Started at:           " `/bin/date` 
 /usr/bin/time -f " \\tFull Command:                      %C \\n\\tMemory (kb):                       %M \\n\\t# SWAP  (freq):                    %W \\n\\t# Waits (freq):                    %w \\n\\tCPU (percent):                     %P \\n\\tTime (seconds):                    %e \\n\\tTime (hh:mm:ss.ms):                %E \\n\\tSystem CPU Time (seconds):         %S \\n\\tUser   CPU Time (seconds):         %U " \
-./test5_sample_C_eff data/4ybb_23S.pdb data/4ybb_23S.pdb.base_pairs.txt rep5 > log.rep5.txt
+./test5_sample_C_eff data/4ybb_23S.pdb data/4ybb_23S.pdb.stems.txt rep5 > log.rep5.txt
 echo "  Finished at:           " `date` 

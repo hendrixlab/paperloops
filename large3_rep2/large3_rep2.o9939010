@@ -1,0 +1,19 @@
+  Started on:            cascade
+  Started at:            Tue Feb 20 17:14:11 PST 2024
+reading in PDB file: data/4ybb_23S.pdb
+Found 1 models.
+Found new chain: C
+creating nuc_array of size 2904
+nuc_array completed.
+PDB file data/4ybb_23S.pdb read completed.
+Building backbone libraries:
+found 2896 dinucleotide pairs.
+reading in stems file: data/4ybb_23S.pdb.stems.txt
+reading stems file: data/4ybb_23S.pdb.stems.txt
+allocating bp_array of size: 787
+reading basepair file complete.
+Building basepair libraries:
+found 787 base pairs.
+Reading motif file: loops_n7.txt
+Writing C_eff results to: C_eff_results_large3_rep2.txt and C_eff_all_results_large3_rep2.txt
+  Finished at:            Tue Feb 20 18:13:47 PST 2024

@@ -34,7 +34,7 @@ def main():
                 error[label] = results1[label][1]
     data.sort(key=lambda x:x[0])
     x_values,x_std,y_values,labels,colors = zip(*data)
-    plt.plot(list(range(10)),list(range(10)),c='k',alpha=0.3,label='y=x')
+    plt.plot(list(range(65)),list(range(65)),c='k',alpha=0.3,label='y=x')
     plt.scatter(x_values,y_values,s=3,label='N_loops=5, L_max=5',color='b')
     plt.errorbar(x_values,y_values,xerr=x_std,fmt='.',markersize=0)
     

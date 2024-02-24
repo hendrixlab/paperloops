@@ -1,0 +1,174 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from scipy.optimize import curve_fit
+from matplotlib.colors import LinearSegmentedColormap
+import random
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator
+
+
+def main():
+    usage = "Usage: " + sys.argv[0] + " <C_eff_results.txt>"
+    
+    if len(sys.argv) != 2:
+        print(usage)
+        exit(0)
+        
+    results_file_list = sys.argv[1]
+    
+    combined = read_results_file_list(results_file_list)
+    
+    colors = ['#9e0142','#d53e4f','#f46d43','#fdae61','#abdda4','#66c2a5','#3288bd','#5e4fa2']
+
+    kB = 1.987204259e-3
+    T = 310.15
+    max_n = 0
+    data = {}
+    avg_all = {}
+    for n in combined:
+        if n > 1:
+            data[n] = []
+            for L in combined[n]:
+                mean_dG = np.mean(combined[n][L])
+                if L > 0:
+                    if (n,L) not in avg_all:
+                        avg_all[(n,L)] = []
+                    avg_all[(n,L)].append(mean_dG)
+                    data[n].append((n,L,mean_dG,colors[n]))
+                if n > max_n:
+                    max_n = n
+
+    params = []
+
+    keys = sorted(list(data.keys()))
+
+    # averages for all loops
+    n_values = []
+    L_values = []
+    dG_values = []
+    for n,L in avg_all:
+        avg_dG = np.mean(avg_all[(n,L)])
+        n_values.append(n)
+        L_values.append(L)
+        dG_values.append(avg_dG)
+    n_values = np.array(n_values)
+    L_values = np.array(L_values)
+    x_values = (n_values,L_values)
+    dG_values = np.array(dG_values)
+    popt_ideal,pcov = curve_fit(f_ideal,x_values,dG_values,maxfev=100000,bounds=([0.0,0.0,-100.0],100))
+    (B,C,D) = popt_ideal
+
+    '''
+    #eq_label = r'$\Delta G_{avg} ='+str(round(A,2))+' k_B T \log(L + ' + str(round(B,2)) + ') + ' + str(round(C,2)) + '$'
+    print(B,C,D)
+    #plt.scatter(n_values,L_values,dG_values,s=5,label='Average',c='gray')
+    #plt.plot(L_values, f_ideal(L_values,*popt_ideal), color='gray', label=eq_label)
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+
+    #surf = ax.plot_surface(n_values, L_values, f_ideal(x_values,*popt_ideal), cmap=cm.coolwarm,
+    #                    linewidth=0, antialiased=False)
+    ax.scatter(n_values,L_values,dG_values)
+
+    # Customize the z axis.
+    #ax.set_zlim(-1.01, 1.01)
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    # A StrMethodFormatter is used automatically
+    ax.zaxis.set_major_formatter('{x:.02f}')
+
+    # Add a color bar which maps values to colors.    
+    #fig.colorbar(surf, shrink=0.5, aspect=5)
+    plt.savefig('test_3D.pdf')
+    '''
+    
+    for n in keys:
+        # x_values are the lengths, y_values are the delta G values
+        n_values,L_values,dG_values,cols = zip(*data[n])
+        n_values = np.array(n_values)
+        L_values = np.array(L_values)
+        x_values = (n_values,L_values)
+        y_values = np.array(dG_values)
+        plt.scatter(L_values,y_values,s=5,label='multiloops, n='+str(n),c=cols)
+        # assume odd by default
+        p0 = (random.uniform(0,5),random.uniform(0,5),random.uniform(0,5),random.uniform(0,5),random.uniform(-5,5))
+        if n % 2 == 0:
+            p0 = (random.uniform(0,5),random.uniform(0,5),random.uniform(-5,0),random.uniform(0,5),random.uniform(-5,5))            
+        popt,pcov = curve_fit(f,x_values,y_values,p0,maxfev=10000000,bounds=([0,0,-100,0.0,-100.0],100))
+        A,B,C,D,E = popt
+        eq_label = r'$\Delta G = (3/2) k_B T \log('+str(round(A,2))+'n + ' + str(round(B,2)) + 'L) + ' + str(round(C,2)) + '/(L^2+' + str(round(D,2)) + ') + ' + str(round(E,2)) + '$'
+        plt.plot(L_values, f(x_values,*popt), color=cols[0], label=eq_label)
+    plt.xlabel('L, combined loop length (nt)')
+    plt.ylabel(r'$\Delta$G loop circularization (kcal/mol)');
+    plt.legend(fontsize=8)
+    plt.savefig("multiloop_equation_explore_ideal2.pdf")
+    
+    plt.clf()
+    '''
+
+def f_ideal(x,B,C,D):
+    n,L = x
+    kB = 1.987204259e-3
+    T = 310.15
+    return (1.5)*kB*T*np.log(B*n + C*L) + D
+
+def f(x,A,B,C,D,E):
+    n,L = x
+    kB = 1.987204259e-3
+    T = 310.15
+    return 1.5*kB*T*np.log(A*n + B*L) + C/(np.square(L)+D) + E
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    return len(label.split('-'))
+
+#########
+# INPUT #
+#########
+
+def read_results_file_list(results_file_list):
+    F = open(results_file_list)
+    combined = {}
+    for line in F:
+        results_file = line.strip()
+        results = read_results_file(results_file)
+        for n in results:
+            if n not in combined:
+                combined[n] = {}
+            for L in results[n]:
+                if L not in combined[n]:
+                    combined[n][L] = []
+                combined[n][L].extend(results[n][L])                
+    return combined
+
+def read_results_file(results_file):
+    F = open(results_file)
+    kB = 1.987204259e-3
+    T = 310.15
+    results = {}
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            label,C_eff,C_eff_err = line.split('\t')
+            C_eff = float(C_eff)
+            if C_eff > 0.0:
+                deltaG = -kB * T * np.log(C_eff);
+                n = count(label)
+                if n not in results:
+                    results[n] = {}
+                L = length(label)
+                if L not in results[n]:
+                    results[n][L] = []
+                results[n][L].append(deltaG)
+    return results
+
+
+########
+# MAIN #
+########
+
+main()
