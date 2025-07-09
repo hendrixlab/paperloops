@@ -8,6 +8,7 @@
  */
 
 #include "motifs.h"
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -88,12 +89,14 @@ struct list* create_list() {
 }
 
 void free_list(struct list* list) {
+  assert(list);
   free(list->data);
   free(list);
 }
 
 // append to a list, update length as needed 
 void list_append(struct list* list, long int n) {
+  assert(list);
   if(list->len == list->cap) {
     int new_cap = 2*(list->cap);
     long int* new_data = malloc(new_cap*sizeof(long int));
@@ -110,11 +113,13 @@ void list_append(struct list* list, long int n) {
 
 // return the current length of a list/dynamic array
 int list_length(struct list* list) {
+  assert(list);
   return list->len;
 }
 
 // print the contents of a list, for debugging
 void print_list(struct list* list, char* title) {
+  assert(list);
   printf("%s: ",title);
   for(int i=0; i<list->len; i++) {
     printf("%l ", list->data[i]);
@@ -127,10 +132,11 @@ void print_list(struct list* list, char* title) {
  ************************/
 
 int hash_function(struct hash_table* hash_table, long int key) {
+  assert(hash_table);
   return key % hash_table->size;
 }
 
-struct hash_table* hash_table_create(int array_size) {
+struct hash_table* create_hash_table(int array_size) {
   struct hash_table* hash_table = malloc(sizeof(struct hash_table));
   assert(hash_table);
   hash_table->total = 0;
@@ -148,7 +154,7 @@ struct hash_table* hash_table_create(int array_size) {
   return hash_table;
 }
 
-void hash_table_free(struct hash_table* hash_table) {
+void free_hash_table(struct hash_table* hash_table) {
   assert(hash_table);
   /*
    * loop through the array, and delete each node
@@ -165,7 +171,7 @@ void hash_table_free(struct hash_table* hash_table) {
   free(hash_table);
 }
 
-void hash_table_reset(struct hash_table* hash_table) {
+void reset_hash_table(struct hash_table* hash_table) {
   assert(hash_table);
   /*
    * loop through the array, and delete each node
@@ -240,6 +246,7 @@ int hash_table_empty(struct hash_table* hash_table, long int key) {
 }
 
 float hash_table_load(struct hash_table* hash_table) {
+  assert(hash_table);
   int num_col = 0;
   
   // loop through the array, then traverse the linked list
@@ -317,6 +324,7 @@ struct list* get_primes(int n) {
 }
 
 int mobius(int n, struct list* primes) {
+  assert(primes);
   if(n == 1) {
     return 1;
   } else {
@@ -463,10 +471,12 @@ int get_motif_loop(struct motif* motif, int idx) {
 }
 
 long int get_motif_id(struct motif* motif) {
+  assert(motif);
   return motif->id;
 }
 
 int get_motif_sum(struct motif* motif) {
+  assert(motif);
   int sum = 0;
   int num = get_motif_num(motif);
   for(int i=0; i<num; i++) {
@@ -476,6 +486,7 @@ int get_motif_sum(struct motif* motif) {
 }
 
 void print_motif(struct motif* motif, char c) {
+  assert(motif);
   int n = get_motif_num(motif);
   //printf("%d\t(",motif->id);
   for(int i=0; i<n; i++) {
@@ -489,6 +500,7 @@ void print_motif(struct motif* motif, char c) {
 }
 
 void fprint_motif(FILE* F, struct motif* motif, char c) {
+  assert(motif);
   int n = get_motif_num(motif);
   //fprintf(F,"%d\t(",motif->id);
   for(int i=0; i<n; i++) {
@@ -507,6 +519,7 @@ long int get_new_id(long int id, int new_num, int new_loop, int L_max) {
 }
 
 long int compute_motif_id(struct motif* motif, int L_max) {
+  assert(motif);
   long int new_id = 0;
   int num = get_motif_num(motif);
   for(int n=0; n<num; n++) {
@@ -517,6 +530,7 @@ long int compute_motif_id(struct motif* motif, int L_max) {
 
 struct motif* expand_motif(struct motif* motif, int new_loop, int L_max) {
   // adds to a motif a new loop length
+  assert(motif);
   int num = get_motif_num(motif);
   long int id = get_motif_id(motif);
 
@@ -537,6 +551,7 @@ struct motif* expand_motif(struct motif* motif, int new_loop, int L_max) {
 struct motif* rotate_motif(struct motif* motif, int L_max) {
   // rotates motif, x0-x1-x2-...-xn -> x1-x2-...-xn-x0
   // can not free incoming motif here because stored in build_motif_lib(). Must free at end of program run
+  assert(motif);
   int num = get_motif_num(motif);
 
   struct motif* rot_motif = create_motif(num);
@@ -552,6 +567,7 @@ struct motif* rotate_motif(struct motif* motif, int L_max) {
   set_motif_id(rot_motif,new_id);
 
   // important: building in linked list of rotations attached to main motif
+  // this is done in set_next_motif() function, but not required
   //motif->next = rot_motif;
   
   return rot_motif;
@@ -608,19 +624,6 @@ struct motif* get_motif(struct motif_group* motif_group, int idx) {
   return NULL;
 }
 
-int motif_empty(struct motif_group* motif_group, int idx) {  
-  // might be defunct
-  if(0 <= idx && idx < motif_group->size) {
-    if(motif_group->data[idx]) {
-      return 0;
-    }
-    return 1;
-  } else {
-    printf("error: index out of range: %d not within [%d,%d]\n",idx,0,motif_group->size);
-    exit(1);
-  }
-}
-
 void add_motif(struct motif_group* motif_group, struct motif* motif) {
   assert(motif_group);
   assert(motif);
@@ -647,7 +650,6 @@ void append_motif(struct motif_group* motif_group, struct motif* motif) {
     free(motif_group->data);
     motif_group->data = new_data;
     motif_group->size = new_size;
-    //printf("resizing to %d\n",new_size);
   } 
   motif_group->data[len] = motif; // add to last spot, this need not be motif->id
   motif_group->count++;
@@ -667,8 +669,8 @@ struct motif_group*** create_motif_lib(int N_loops, int L_max) {
 
 struct hash_table** create_motif_list(int N_loops, int L_max) {
   struct hash_table** motif_list = malloc((N_loops+1)*sizeof(struct hash_table*));  
-  motif_list[0] = hash_table_create(0); // sort of a place holder, has size=0
-  motif_list[1] = hash_table_create(L_max+1); // hairpin loops, should be L_max+1 in size: 0,1,...,L_max
+  motif_list[0] = create_hash_table(0); // sort of a place holder, has size=0
+  motif_list[1] = create_hash_table(L_max+1); // hairpin loops, should be L_max+1 in size: 0,1,...,L_max
   
   return motif_list;
 }
@@ -676,7 +678,7 @@ struct hash_table** create_motif_list(int N_loops, int L_max) {
 void free_motif_list(struct hash_table** motif_list, int N_loops) {
   // motif list is an array of motif groups, indexed by the number of loops "n"
   for(int n=0; n<=N_loops; n++) {
-    hash_table_free(motif_list[n]);
+    free_hash_table(motif_list[n]);
   }
   free(motif_list);
 }
@@ -695,18 +697,6 @@ void free_motif_lib(struct motif_group*** motif_lib, int N_loops, int L_max) {
 	  free_motif(motif);
 	  motif = next_motif;
 	}
-	//free_motif(motif);
-
-	/*
-	if(motif) {
-	  while(get_next_motif(motif)) {
-	    struct motif* next_motif = get_next_motif(motif);
-	    free_motif(motif);
-	    motif = next_motif;
-	  }
-	  free_motif(motif);
-	}
-	*/
       }
       free_motif_group(motif_lib[n][L]);
     }
@@ -733,9 +723,9 @@ struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N) {
   // recursively build motif_lib for different lengths    
   for(int n=2;n<=N_loops;n++) { // create multi-junction loops 
     //int new_size = 1 + L_max * pow(L_max+1,n-1); // 1 + largest possible id for n loops that add up to L_max or less
-    int new_size = N[n][L_max];
+    int new_size = N[n][L_max]; 
     printf("New motif size for n=%d: %d\n",n,new_size);
-    motif_list[n] = hash_table_create(new_size);
+    motif_list[n] = create_hash_table(new_size);
     struct list* motif_ids = create_list();
     for(int i=0;i<list_length(prev_motif_ids);i++) { // id of n-1 group
       long int id = prev_motif_ids->data[i];
@@ -755,10 +745,10 @@ struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N) {
  	  list_append(motif_ids,new_id); // append the id of each motif
 	  for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has n rotations
 	    struct motif* prev_motif = new_motif; // init. prev_motif to lexicographically lowest motif
-	    new_motif = rotate_motif(new_motif,L_max); // first rotation
+	    new_motif = rotate_motif(new_motif,L_max);
 	    long int new_id = get_motif_id(new_motif);
 	    if(new_id < 0) {
-	      printf("%l\t%d\t%d\n",new_id,n,L);
+	      printf("ERROR: %l\t%d\t%d\n",new_id,n,L);
 	    }
 	    if(hash_table_empty(motif_list[n],new_id)) { // only add if it is not visited/stored yet
 	      hash_table_set(motif_list[n],new_id,new_motif); // each rotation gets added to motif_list
@@ -778,65 +768,6 @@ struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N) {
   free_motif_list(motif_list,N_loops);
   return motif_lib;
 }
-
-
-/*
-struct motif_group*** build_motif_lib(int N_loops, int L_max) {
-  // create data structures
-  struct motif_group** motif_list = create_motif_list(N_loops,L_max); // indexed by n only, all motifs for that n
-  struct motif_group*** motif_lib = create_motif_lib(N_loops,L_max); // indexed by n and L, only "lowest" rotation
-  struct list* prev_motif_ids = create_list();
-
-  // initialize with singleton motifs:
-  for(int L=0;L<=L_max;L++) {
-    struct motif* motif = create_motif(1);
-    initialize_motif(motif,L); // one-loop motifs, setting l_0 = L;
-    add_motif(motif_list[1],motif);
-    append_motif(motif_lib[1][L],motif);
-    list_append(prev_motif_ids,L);
-  }
-  
-  // recursively build motif_lib for different lengths    
-  for(int n=2;n<=N_loops;n++) { // create multi-junction loops 
-    int new_size = 1 + L_max * pow(L_max+1,n-1); // 1 + largest possible id for n loops that add up to L_max or less
-    printf("New motif size for n=%d: %d\n",n,new_size);
-    motif_list[n] = create_motif_group(new_size);
-    struct list* motif_ids = create_list();
-    for(int i=0;i<list_length(prev_motif_ids);i++) { // id of n-1 group
-      int id = prev_motif_ids->data[i];
-      struct motif* motif = get_motif(motif_list[n-1],id);
-      int sum = get_motif_sum(motif);
-      for(int L=0;L<=L_max-sum;L++) {
-	int new_id = get_new_id(id,n,L,L_max);
-	if(motif_empty(motif_list[n],new_id)) { // only add the new motif if it is not filled yet.
-	  int L_tot = sum + L;
-	  struct motif* new_motif = expand_motif(motif,L,L_max);
-	  add_motif(motif_list[n],new_motif);
-	  append_motif(motif_lib[n][L_tot],new_motif); //lexicographically lowest, only one added to lib
- 	  list_append(motif_ids,new_id); // append the id of each motif
-	  for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has n rotations
-	    struct motif* prev_motif = new_motif; // init. prev_motif to lexicographically lowest motif
-	    new_motif = rotate_motif(new_motif,L_max); // first rotation
-	    int new_id = get_motif_id(new_motif);
-	    if(motif_empty(motif_list[n],new_id)) { // only add if it is not visited/stored yet
-	      add_motif(motif_list[n],new_motif); // each rotation gets added to motif_list
-	      list_append(motif_ids,new_id); // append the id of each rotation to motif_ids
-	      set_next_motif(prev_motif,new_motif); // attach the rotation 
-	    }
-	  }
-	}
-      }
-    }
-    qsort(motif_ids->data,list_length(motif_ids),sizeof(int),compare);
-    free_list(prev_motif_ids); // this should free memory allocated for motif_ids b/c of next line
-    prev_motif_ids = motif_ids;
-  }
-  // final memory clean-up
-  free_list(prev_motif_ids);
-  free_motif_list(motif_list,N_loops);
-  return motif_lib;
-}
-*/
 
 void print_motif_lib_counts(struct motif_group*** motif_lib, int N_loops, int L_max) {
   for(int n=0; n<N_loops; n++) {
@@ -896,6 +827,17 @@ int steptypes_length(struct steptypes* steptypes) {
   return steptypes->length;
 }
 
+int steptypes_bp_count(struct steptypes* steptypes) {
+  int Nbp = 0;
+  for(int i=0; i<steptypes_length(steptypes); i++) {
+    char* step = steptypes_get(steptypes,i);
+    if(strcmp(step,"BP") == 0) {
+      Nbp++;
+    }
+  }
+  return Nbp;
+}
+
 char* steptypes_get(struct steptypes* steptypes, int idx) {
   assert(steptypes);
   return steptypes->steps[idx];
@@ -931,6 +873,17 @@ struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int e
     exit(0);
   }
   return substeps;
+}
+
+struct steptypes* steptypes_concat(struct steptypes* steps1, struct steptypes* steps2) {
+  struct steptypes* steps = create_steptypes(steptypes_length(steps1) + steptypes_length(steps2));
+  for(int i=0; i<steptypes_length(steps1); i++) {
+    steptypes_set(steps,i,steptypes_get(steps1,i));
+  }
+  for(int i=0; i<steptypes_length(steps2); i++) {
+    steptypes_set(steps,steptypes_length(steps1)+i,steptypes_get(steps2,i));
+  }
+  return steps;
 }
 
 void print_steptypes(struct steptypes* steptypes) {

@@ -1,0 +1,216 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from scipy.optimize import curve_fit
+from matplotlib.colors import LinearSegmentedColormap
+import random
+from sklearn.metrics import r2_score
+
+
+def f(x,A,B,C,D,E):
+    AA,H,P1,P2 = x
+    return  A*AA + B*H + C*P1 + D*P2 + E
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    return len(label.split('-'))
+
+def rotate(label):
+    lengths = label.split('-')
+    rotated = [lengths[len(lengths)-1]] + lengths[:len(lengths)-1]
+    return '-'.join(rotated)
+
+def entropy(label):
+    pc = 0.1 # pseudocount
+    lengths = [int(L) for L in label.split('-')]    
+    total = sum(lengths)
+    n = len(lengths)
+    H = 0.0
+    for i in range(len(lengths)):
+        p = (lengths[i]+pc)/(total+n*pc)
+        H += -p*np.log(p)
+    return H
+
+def skew(label):
+    lengths = [int(L) for L in label.split('-')]
+    skew = 0.0
+    for i in range(len(lengths)):
+        five_prime = lengths[i-1]
+        three_prime = lengths[i]
+        if three_prime != five_prime:
+            skew += 1.0
+    return skew/len(lengths)
+
+def less_than(label1,label2) :    
+    lengths1 = [int(L) for L in label1.split('-')]
+    lengths2 = [int(L) for L in label2.split('-')]
+    #print("less_than:",lengths1,lengths2)
+    for i in range(len(lengths1)):
+        if lengths1[i] < lengths2[i]:
+            return True
+        elif lengths1[i] > lengths2[i]:
+            return False
+        else:
+            continue
+    print(f"unexpected condition in less_than: {label1} {label2}")
+    exit()    
+
+def lowest_rotation(label):
+    #print("passed in:",label)
+    min_label = label
+    for i in range(count(label)-1):
+        rotation = rotate(label)
+        #print(">",i,label,rotation)
+        if label == rotation:
+            #print("label is rotation")
+            return min_label
+        if rotation == min_label and i > 0:
+            #print("label is min_label")
+            return min_label
+        if less_than(rotation,min_label):
+            #print("found new min")
+            min_label = rotation
+        label = rotation
+    return min_label
+
+def asymmetry(label):
+    lengths = [int(L) for L in label.split('-')]
+    n_loops = len(lengths)
+    sum = 0.0
+    for i in range(len(lengths)):
+        fivePrime = lengths[i-1] # -1 is the last element
+        threePrime = lengths[i]
+        diff = abs(fivePrime - threePrime)
+        sum += diff/n_loops
+    #asymmetry = min(2.0,sum)
+    #return asymmetry
+    return sum
+
+def sign(x):
+    if x >= 0:
+        return '+'
+    else:
+        return '-'
+ 
+def get_coeffs(label):
+    data1 = []
+    data2 = []
+    lengths = [float(this_L) for this_L in label.split('-') ]
+    fc = np.fft.fft(lengths)
+    fc2 = np.abs(fc)**2
+    fc2 = fc2 / np.sum(fc2)
+    P1 = fc2[int((len(fc2)-1)/2)]
+    P2 = fc2[len(fc2)-1]
+    return P1,P2
+
+#########
+# INPUT #
+#########
+
+def read_results_file_list(results_file_list):
+    F = open(results_file_list)
+    combined = {}
+    for line in F:
+        results_file = line.strip()
+        results = read_results_file(results_file)
+        for n in results:
+            if n not in combined:
+                combined[n] = {}
+            for L in results[n]:
+                if L not in combined[n]:
+                    combined[n][L] = []
+                combined[n][L].extend(results[n][L])
+                #print(n,L)
+    return combined
+
+def read_results_file(results_file):
+    F = open(results_file)
+    kB = 1.987204259e-3
+    T = 310.15
+    results = {}
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            label,C_eff,C_eff_err = line.split('\t')
+            C_eff = float(C_eff)
+            if C_eff > 0.0:
+                deltaG = -kB * T * np.log(C_eff);
+                n = count(label)
+                if n not in results:
+                    results[n] = {}
+                L = length(label)
+                if L not in results[n]:
+                    results[n][L] = []
+                results[n][L].append((label,deltaG))
+    return results
+    
+########
+# MAIN #
+########
+
+usage = "Usage: " + sys.argv[0] + " <C_eff results file list> <n> <L>"
+
+if len(sys.argv) != 4:
+    print(usage)
+    exit(0)
+        
+results_file_list = sys.argv[1]
+n_input = int(sys.argv[2])
+L_input = int(sys.argv[3])
+file_base = os.path.splitext(os.path.basename(results_file_list))[0]
+    
+combined = read_results_file_list(results_file_list)
+
+colors = ['#9e0142','#d53e4f','#f46d43','#fdae61','#abdda4','#66c2a5','#3288bd','#5e4fa2']
+
+kB = 1.987204259e-3
+T = 310.15
+max_n = 0
+data = {}
+avg_all = {}
+
+print_data = {}
+if n_input in combined:
+    if L_input in combined[n_input]:
+        for label,dG in combined[n_input][L_input]:
+            min_label = lowest_rotation(label)
+            if min_label not in print_data:
+                print_data[min_label] = []
+            print_data[min_label].append(dG)
+
+data = []
+for label in print_data:
+    A = asymmetry(label)
+    H = entropy(label);
+    P1,P2 = get_coeffs(label)
+    avg_dG = np.mean(print_data[label])
+    data.append((label,A,H,P1,P2,avg_dG))
+
+labels,As,Hs,P1s,P2s,dGs = zip(*data)
+As = np.array(As)
+Hs = np.array(Hs)
+P1s = np.array(P1s)
+P2s = np.array(P2s)
+x_values = (As,Hs,P1s,P2s)
+y_values = np.array(dGs)
+popt,pcov = curve_fit(f,x_values,y_values)
+y_pred = f(x_values,*popt)
+(A,B,C,D,E) = popt
+R2 = r2_score(y_pred,y_values)                
+equ_label = r'$\Delta G_{fit} = $'+str(round(A,2))+'*A + ' + str(round(B,2)) + '*H + ' + str(round(C,2)) + '*P[(n-1)/2] + ' + str(round(D,2)) + '*P[n-1] + ' + str(round(E,2)) + '\nR^2 = '+str(round(R2,2))
+plt.scatter(y_values,y_pred,label=f"n={n_input} L={L_input}\n" + equ_label)
+#plt.plot(y_values,,label=equ_label)
+for label,A,H,P1,P2,dG,dG_fit in zip(labels,As,Hs,P1s,P2s,dGs,y_pred):
+    print("%s\t%.2f\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f" % (label,A,H,P1,P2,dG,dG_fit))
+#print(popt)
+#print("R^2 =",R2)
+
+plt.legend(fontsize=9)
+plt.xlabel('paperloops ' + r'$\Delta G$')
+plt.ylabel('linear fit ' + r'$\Delta G_{fit}$')
+plt.savefig(file_base + f'_model_fit_n{n_input}_L{L_input}.pdf')
+

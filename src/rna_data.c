@@ -1037,6 +1037,11 @@ void print_sugar_torsions(struct rna_data* RNA) {
   fclose(OUTPUT);  
 }
 
+/******************************************************
+ * nuc_array functions                                *
+ * provides faster index-driven access to nucleotides *
+ ******************************************************/
+
 void set_rna_nuc_array(struct rna_data* RNA) {
   assert(RNA);
   for(int i=0; i<RNA->model_count; i++) {      
@@ -1054,9 +1059,9 @@ void set_chain_nuc_array(struct chain* chain) {
   assert(chain);
   if(chain->length != 0) {
     struct nuc* last_nuc = get_last_nuc(chain);
-    // allocate the array with the index of the last nuc
-    printf("creating nuc_array of size %d\n",last_nuc->num);
-    chain->nuc_array_size = last_nuc->num;
+    // allocate the array with the index of the last nuc + 1 b/c assumed to be 1-based numbering
+    printf("creating nuc_array of size %d\n",last_nuc->num+1);
+    chain->nuc_array_size = last_nuc->num+1;
     struct nuc** nuc_array = malloc(sizeof(struct nuc) * last_nuc->num);
     struct nuc* n = get_first_nuc(chain); // first nuc of chain
     int prev_num = 0;
@@ -1115,7 +1120,7 @@ int get_bp_array_size(struct bp_array* bp_array) {
   return bp_array->size;
 }
 
-void set_bp(struct bp_array* bp_array, struct bp* bp, int idx) {
+void set_bp(struct bp_array* bp_array, int idx, struct bp* bp) {
   if((0 <= idx)&&(idx < bp_array->size)) {
     bp_array->data[idx] = bp;
   } else {
@@ -1201,40 +1206,3 @@ char* get_chain_sequence(struct chain* chain) {
   return chain->seq;
 }
 
-/*
-double* get_min_bounds(struct RNA* RNA) {
-  assert(RNA);
-  if(get_model_count(RNA) == 0) {
-    printf("No models found for RNA.\n");
-     exit(1);
-  }
-  double* min = create_vector();
-  min[0] = min[1] = min[2] = 1000000000.0;
-  for(int i=0; i<get_model_count(RNA); i++) {
-    struct rna_model* RNA_model = get_rna_model(RNA,i); 
-    struct chain* chain = get_first_chain(RNA_model);
-    struct nuc* nuc = get_first_nuc(chain);
-    while(before_end(chain,nuc)) {
-      struct atom* a = get_first_backbone_atom(struct nuc* nuc);
-      while(next_atom(a)) {
-	// do stuff
-	a = next_atom(a);
-      }
-      struct atom* a = get_first_sugar_atom(struct nuc* nuc);
-      while(count<5) {
-	// do stuff
-	a = next_sugar_atom(a);
-	count++;
-      }
-      struct atom* a = get_first_base_atom(struct nuc* nuc);
-      while(next_atom(a)) {
-	// do stuff
-	a = next_atom(a);
-      }
-      // move to next nucleotide
-      nuc = next_nuc(chain,nuc);
-      chain = next_chain(chain);
-    }
-  }
-}
-*/

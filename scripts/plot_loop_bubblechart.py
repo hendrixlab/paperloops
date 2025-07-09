@@ -113,7 +113,7 @@ for n in Nloops:
         x_labels,y_values,y_err = zip(*plt_data[n])    
         if n==1:
             # plot errorbar just for hairpin loops
-            plt.errorbar(range(len(x_labels)),y_values,y_err)
+            #plt.errorbar(range(len(x_labels)),y_values,y_err,c='k')
         for i in range(len(labels[n])):
             total = len(data[n][labels[n][i]])
             if(total):
@@ -122,7 +122,7 @@ for n in Nloops:
             else:
                 print(f"Found no examples in all_results: n={n} ",labels[n][i])
                 exit()
-        plt.yscale('log')
+        #plt.yscale('log')
         x_values = range(len(labels[n]))
         plt.xticks(x_values,labels[n],rotation=90, fontsize=8)
         plt.xlabel("loop motifs lengths (nt)")

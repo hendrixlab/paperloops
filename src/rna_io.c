@@ -194,7 +194,8 @@ struct rna_data* read_pdb_file(char* input_file_name) {
     // loop through the model locations and read in data: 
     fseek(F,get_model_loc(RNA,model_num),0);  // jump to the first ATOM line of model
     while(fgets(line,MAX_LINE_LENGTH,F)) {
-      if((strncmp(line,"ATOM  ",6) == 0)||(strncmp(line,"HETATM",6) == 0)) {
+      //if((strncmp(line,"ATOM  ",6) == 0)||(strncmp(line,"HETATM",6) == 0)) {
+      if(strncmp(line,"ATOM  ",6) == 0) {
 	char chain_id = extract_chain_id(line);
 	if(new_chain_id(RNA_model,chain_id)) {
 	  printf("Found new chain: %c\n",chain_id);
@@ -316,9 +317,29 @@ int count_stem_basepairs(FILE* F) {
 	  printf("lengths don't match in stem file.\n");
 	  exit(1);
 	}
+      } else if(bp1_info->cols == 2 && bp2_info->cols == 2) {
+	struct split_text* range1 = split_line(bp1_info->term[1],"-");
+	struct split_text* range2 = split_line(bp2_info->term[1],"-");
+	int stem_start1 = atoi(range1->term[0]);
+	int stem_end1 = atoi(range1->term[1]);
+	int length1 = stem_end1 - stem_start1 + 1;
+	int stem_start2 = atoi(range2->term[0]);
+	int stem_end2 = atoi(range2->term[1]);
+	int length2 = stem_end2 - stem_start2 + 1;
+	if(length1 == length2) {
+	  size += length1;
+	} else {
+	  printf("lengths don't match in stem file.\n");
+	  exit(1);
+	}
+      } else {
+	printf("parsing error in stems file.\n");
+	exit(1);
       }
+      free_split_text(bp1_info);
+      free_split_text(bp2_info);
     } else {
-      printf("unexpected number of columns.\n");
+      printf("unexpected number of columns in stems file.\n");
       exit(1);
     }
     free_split_text(row);
@@ -352,12 +373,12 @@ struct bp_array* read_basepair_file(char *basepair_file) {
 	struct split_text* bp2_info = split_line(row->term[1],":");
 	if(bp1_info->cols == 2 && bp2_info->cols == 2) {
 	  struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[1]),atoi(bp2_info->term[1]));
-	  set_bp(bp_array,bp,count);
+	  set_bp(bp_array,count,bp);
 	} else if(bp1_info->cols == 3 && bp2_info->cols == 3) {
 	  // access first character/convert to char with ->term[0][0]
 	  fprintf(OUT,"%c %d %c %d\n",bp1_info->term[0][0],atoi(bp1_info->term[2]),bp2_info->term[0][0],atoi(bp2_info->term[2]));
 	  struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[2]),atoi(bp2_info->term[2]));
-	  set_bp(bp_array,bp,count);	  
+	  set_bp(bp_array,count,bp);
 	} else {
 	  printf("Unexpected situation in basepair file: %s",basepair_file);
 	}
@@ -406,13 +427,33 @@ struct bp_array* read_stems_file(char *stems_file) {
 	for(int pos1 = stem_start1; pos1 <= stem_end1; pos1++) {
 	  int pos2 = stem_end2 - (pos1 - stem_start1);
 	  // for chain_id, convert from string to char with ->term[0][0] i.e. access first char
-	  fprintf(OUT,"%c %d %c %d\n",stem_info1->term[0][0],pos1,stem_info2->term[0][0],pos2);
-	  struct bp* bp = create_bp(stem_info1->term[0][0],stem_info2->term[0][0],pos1,pos2);
-	  set_bp(bp_array,bp,count);
+	  char chain_id1 = stem_info1->term[0][0];
+	  char chain_id2 = stem_info2->term[0][0];
+	  fprintf(OUT,"%c %d %c %d\n",chain_id1,pos1,chain_id2,pos2);
+	  struct bp* bp = create_bp(chain_id1,chain_id2,pos1,pos2);
+	  set_bp(bp_array,count,bp);
+	  count++;
+	}
+      } else if(stem_info1->cols == 2 && stem_info2->cols == 2) {
+	struct split_text* range1 = split_line(stem_info1->term[1],"-");
+	struct split_text* range2 = split_line(stem_info2->term[1],"-");
+	int stem_start1 = atoi(range1->term[0]);
+	int stem_end1 = atoi(range1->term[1]);
+	int stem_start2 = atoi(range2->term[0]);
+	int stem_end2 = atoi(range2->term[1]);
+	for(int pos1 = stem_start1; pos1 <= stem_end1; pos1++) {
+	  int pos2 = stem_end2 - (pos1 - stem_start1);
+	  // for chain_id, convert from string to char with ->term[0][0] i.e. access first char
+	  char chain_id1 = stem_info1->term[0][0];
+	  char chain_id2 = stem_info2->term[0][0];
+	  fprintf(OUT,"%c %d %c %d\n",chain_id1,pos1,chain_id2,pos2);
+	  struct bp* bp = create_bp(chain_id1,chain_id2,pos1,pos2);
+	  set_bp(bp_array,count,bp);
 	  count++;
 	}
       } else {
-	printf("Unexpected situation in basepair file: %s",stems_file);
+	printf("Unexpected situation in stems file: %s",stems_file);
+	exit(1);
       }
       free_split_text(stem_info1);
       free_split_text(stem_info2);
@@ -431,24 +472,68 @@ struct bp_array* read_stems_file(char *stems_file) {
  * MOTIF INPUT
  */
 
+
+int read_max_motif_length(FILE* MOTIF_FILE) {
+  char line[MAX_LINE_LENGTH];
+
+  int L_max = 0;
+  while(fgets(line,MAX_LINE_LENGTH,MOTIF_FILE)) {
+    struct split_text* row = split_line(line,"-");
+    int n = row->cols;   // row->cols is n 
+    struct motif* motif = create_motif(n);
+    for(int i=0; i<row->cols; i++) {  // motif has to be built with loop lengths
+      set_motif_loop(motif,i,atoi(row->term[i]));
+    }
+    int L = get_motif_sum(motif);
+    if(L > L_max) {
+      L_max = L;
+    }
+    free_motif(motif);
+  }
+  return L_max;
+}
+
+
 struct motif_group* read_motif_file(char* motif_file) {
   char line[MAX_LINE_LENGTH];
 
-  FILE* F = fopen(motif_file,"r");
-  if(F == NULL) {
+  FILE* MOTIF_FILE = fopen(motif_file,"r");
+  if(MOTIF_FILE == NULL) {
     printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",motif_file);
     exit(1);
   }  
 
   struct motif_group* motif_group = create_motif_group(1);
-  while(fgets(line,MAX_LINE_LENGTH,F)) {
+  int L_max = read_max_motif_length(MOTIF_FILE);
+  fseek(MOTIF_FILE,0,0); // reset file
+  struct hash_table* motif_hash = create_hash_table(L_max); // not sure what size to use here
+  
+  while(fgets(line,MAX_LINE_LENGTH,MOTIF_FILE)) {
     struct split_text* row = split_line(line,"-");
-    struct motif* motif = create_motif(row->cols);
-    for(int i=0; i<row->cols; i++) {
+    int n = row->cols;   // row->cols is n 
+    struct motif* motif = create_motif(n);
+    for(int i=0; i<row->cols; i++) {  // motif has to be built with loop lengths
       set_motif_loop(motif,i,atoi(row->term[i]));
     }
+    long int id = compute_motif_id(motif,L_max);
+    set_motif_id(motif,id);
+    hash_table_set(motif_hash,id,motif);
     append_motif(motif_group,motif);
+    // motif added, now add all the rotations
+    for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has at most n rotations
+      struct motif* prev_motif = motif; // initially prev_motif has motif that was read in, but is updated
+      motif = rotate_motif(motif,L_max); 
+      long int id = get_motif_id(motif);
+      if(id < 0) {
+	printf("ERROR: %l\t%d\n",id,n);
+      }
+      if(hash_table_empty(motif_hash,id)) { // only add if it is not visited/stored yet
+	hash_table_set(motif_hash,id,motif); // each rotation gets added to motif_hash
+	set_next_motif(prev_motif,motif); // attach the rotation so motif_lib has all of them
+      }
+    }
   }
-  fclose(F);
+  free_hash_table(motif_hash);
+  fclose(MOTIF_FILE);
   return motif_group;
 }

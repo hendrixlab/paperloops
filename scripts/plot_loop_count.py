@@ -1,0 +1,60 @@
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os, re
+
+#########
+# INPUT #
+#########
+
+def read_loop_motif_file(loop_motif_file):
+    F = open(loop_motif_file)
+    data = {}
+    for line in F:
+        # Npred(n=1,L=0)=1
+        if 'Npred' in line:
+            match = re.search('Npred\(n=(\d+),L=(\d+)\)=(\d+)',line)
+            if not match:
+                print(line)
+                exit()
+            n = int(match.group(1))
+            L = int(match.group(2))
+            Npred = int(match.group(3))
+            if n not in data:
+                data[n] = []
+            data[n].append((L,Npred))
+    for n in data:
+        data[n].sort(key=lambda x:x[0])
+    return data
+            
+########
+# MAIN #
+########
+
+usage = "Usage: " + sys.argv[0] + " <C_eff_results.txt>"
+    
+if len(sys.argv) != 2:
+    print(usage)
+    exit(0)
+        
+loop_motif_file = sys.argv[1]
+    
+data = read_loop_motif_file(loop_motif_file)
+
+colors = ['#9e0142','#d53e4f','#f46d43','#fdae61','#abdda4','#66c2a5','#3288bd','#5e4fa2']
+
+max_n = 0
+
+for n in data:
+    L_values,N_values = zip(*data[n])
+    plt.scatter(L_values, N_values, s=5,label='n='+str(n),c=colors[n-1])
+    plt.plot(L_values, N_values, color=colors[n-1])
+
+plt.yscale('log')
+plt.xlabel('L, combined loop length (nt)')                          
+plt.ylabel('Number of motifs');
+plt.legend(fontsize=8)
+outfile = "loop_motif_count.pdf"
+plt.savefig(outfile)
+print(f"saving to {outfile}")
+plt.clf()

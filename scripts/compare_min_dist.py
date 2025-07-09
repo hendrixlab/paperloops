@@ -1,0 +1,83 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from brewer2mpl import diverging
+from matplotlib.cm import ScalarMappable
+from scipy.optimize import curve_fit
+from sklearn.metrics import r2_score
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    return len(label.split('-'))
+
+def read_results_file_list(results_file_list):
+    F = open(results_file_list)
+    data = {}
+    for line in F:
+        results_file = line.strip()
+        data = read_results_file(results_file,data)
+    return data
+
+def read_results_file(results_file,data):
+    F = open(results_file)
+    max_length = 0
+    kB = 1.987204259e-3
+    T = 310.15
+    for line in F:
+        label,C_eff,C_eff_err = line.split('\t')
+        if not np.isnan(float(C_eff)):
+            C_eff = float(C_eff)
+            deltaG = -kB * T * np.log(C_eff);
+            n = count(label)
+            data[label] = deltaG
+            L = length(label)
+            if L > max_length:
+                max_length = L
+    return data
+
+def f(x,m,b):
+    return x*m + b
+
+
+usage = "Usage: " + sys.argv[0] + " <results file ideal> <results file 2.0> <results file 2.5> <results file 3.0>"
+
+if len(sys.argv) != 5:
+    print(usage)
+    exit(0)
+
+results_file1 = sys.argv[1]
+results_file2 = sys.argv[2]
+results_file3 = sys.argv[3]
+results_file4 = sys.argv[4]
+
+results1 = read_results_file_list(results_file1)
+results2 = read_results_file_list(results_file2)
+results25 = read_results_file_list(results_file3)
+results3 = read_results_file_list(results_file4)
+
+x_values = []
+y_values_2 = []
+y_values_25 = []
+y_values_3 = []
+
+for label in results1:
+    if label in results2 and label in results25 and label in results3:
+        x_values.append(results1[label])
+        y_values_2.append(results2[label])
+        y_values_25.append(results25[label])
+        y_values_3.append(results3[label])
+
+plt.scatter(x_values,x_values,s=3,label='ideal, min dist = 0.0', alpha=0.5, color='k')
+plt.scatter(x_values,y_values_2,s=3,label='min dist = 2.0', alpha=0.5, color='b')
+plt.scatter(x_values,y_values_25,s=3,label='min dist = 2.5', alpha=0.5, color='r')
+plt.scatter(x_values,y_values_3,s=3,label='min dist = 3.0', alpha=0.5, color='orange')
+
+plt.legend()
+plt.xlabel('ideal polymer $\Delta$G (kcal/mol)')
+plt.ylabel('compared model $\Delta$G (kcal/mol)')
+
+plt.savefig("mindist_comparison_scatter.pdf")

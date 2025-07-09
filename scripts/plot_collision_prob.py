@@ -1,0 +1,209 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from scipy.optimize import curve_fit
+from matplotlib.colors import LinearSegmentedColormap
+import random
+
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    return len(label.split('-'))
+
+def rotate(label):
+    lengths = label.split('-')
+    rotated = [lengths[len(lengths)-1]] + lengths[:len(lengths)-1]
+    return '-'.join(rotated)
+
+def less_than(label1,label2) :    
+    lengths1 = [int(L) for L in label1.split('-')]
+    lengths2 = [int(L) for L in label2.split('-')]
+    #print("less_than:",lengths1,lengths2)
+    for i in range(len(lengths1)):
+        if lengths1[i] < lengths2[i]:
+            return True
+        elif lengths1[i] > lengths2[i]:
+            return False
+        else:
+            continue
+    print(f"unexpected condition in less_than: {label1} {label2}")
+    exit()
+
+def lowest_rotation(label):
+    #print("passed in:",label)
+    min_label = label
+    for i in range(count(label)-1):
+        rotation = rotate(label)
+        #print(">",i,label,rotation)
+        if label == rotation:
+            #print("label is rotation")
+            return min_label
+        if rotation == min_label and i > 0:
+            #print("label is min_label")
+            return min_label
+        if less_than(rotation,min_label):
+            #print("found new min")
+            min_label = rotation
+        label = rotation
+    return min_label
+
+def asymmetry(label):
+    lengths = [int(L) for L in label.split('-')]
+    n_loops = len(lengths)
+    sum = 0.0
+    for i in range(len(lengths)):
+        fivePrime = lengths[i-1] # -1 is the last element
+        threePrime = lengths[i]
+        diff = abs(fivePrime - threePrime)
+        sum += diff/n_loops
+    #asymmetry = min(2.0,sum)
+    #return asymmetry
+    return sum
+
+def sign(x):
+    if x >= 0:
+        return '+'
+    else:
+        return '-'
+
+#########
+# INPUT #
+#########
+
+def read_collision_file_list(results_file_list):
+    F = open(results_file_list)
+    combined = {}
+    for line in F:
+        results_file = line.strip()
+        results = read_results_file(results_file)
+        for n in results:
+            if n not in combined:
+                combined[n] = {}
+            for L in results[n]:
+                if L not in combined[n]:
+                    combined[n][L] = []
+                combined[n][L].extend(results[n][L])                
+    return combined
+
+def read_collision_file(results_file):
+    F = open(results_file)
+    kB = 1.987204259e-3
+    T = 310.15
+    results = {}
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            #motif	steptypes	prob	pair_collide	pair_tot	fwd_collide	rev_collide	N_samples
+            label,steptypes,prob,pair_collide,pair_tot,fwd_collide,rev_collide,N_samples = line.split('\t')
+            prob = float(prob)
+            n = count(label)
+            if n not in results:
+                results[n] = {}
+            L = length(label)
+            if L not in results[n]:
+                results[n][L] = []
+            results[n][L].append((label,deltaG))
+    return results
+
+
+########
+# MAIN #
+########
+
+usage = "Usage: " + sys.argv[0] + " <C_eff_results.txt>"
+    
+if len(sys.argv) != 2:
+    print(usage)
+    exit(0)
+        
+results_file_list = sys.argv[1]
+file_base = os.path.splitext(os.path.basename(results_file_list))[0]
+    
+combined = read_results_file_list(results_file_list)
+
+colors = ['#9e0142','#d53e4f','#f46d43','#fdae61','#abdda4','#66c2a5','#3288bd','#5e4fa2']
+
+kB = 1.987204259e-3
+T = 310.15
+max_n = 0
+data = {}
+avg_all = {}
+
+print_data = {}
+for n in combined:
+    if n not in print_data:
+        print_data[n] = {}
+    if n > 1:        
+        for L in combined[n]:
+            if L not in print_data[n]:
+                print_data[n][L] = {}
+            for label,dG in combined[n][L]:
+                min_label = lowest_rotation(label)
+                #print(label,"->",min_label)
+                if min_label not in print_data[n][L]:
+                    print_data[n][L][min_label] = []
+                print_data[n][L][min_label].append(dG)
+            for label in print_data[n][L]:
+                A = asymmetry(label)
+                avg_dG = np.mean(print_data[n][L][label])
+                #print(n,L,label,A,avg_dG)
+
+for n in combined:
+    if n > 1:
+        data[n] = []
+        for L in combined[n]:
+            label,dG = zip(*combined[n][L])
+            mean_dG = np.mean(list(dG))
+            if L > 0:
+                if L not in avg_all:
+                    avg_all[L] = []
+                avg_all[L].append(mean_dG)
+                data[n].append((n,L,mean_dG,colors[n-1]))
+            if n > max_n:
+                max_n = n
+            data[n].sort(key=lambda x:x[1])
+
+params = []
+
+keys = sorted(list(data.keys()))
+# averages for all loops
+L_values = []
+dG_values = []
+for L in avg_all:
+    avg_dG = np.mean(avg_all[L])
+    L_values.append(L)
+    dG_values.append(avg_dG)
+L_values = np.array(L_values)
+dG_values = np.array(dG_values)
+popt_ideal,pcov = curve_fit(f_ideal,L_values,dG_values,maxfev=100000,bounds=([-100,0.0,-100.0],100))
+(A,B,C) = popt_ideal
+eq_label = r'$\Delta G_{avg} ='+str(round(A,2))+' k_B T \log(L + ' + str(round(B,2)) + ') + ' + str(round(C,2)) + '$'
+plt.figure(figsize=(8.0,5))
+plt.scatter(L_values,dG_values,s=5,label='Average',c='gray')
+plt.plot(L_values, f_ideal(L_values,*popt_ideal), color='gray', label=eq_label)
+
+for n in keys:
+    # x_values are the lengths, y_values are the delta G values
+    n_values,L_values,dG_values,cols = zip(*data[n])
+    n_values = np.array(n_values)
+    L_values = np.array(L_values)
+    x_values = (L_values,n_values)
+    y_values = np.array(dG_values)
+    plt.scatter(L_values,y_values,s=5,label='paperloops, n='+str(n),c=cols)
+    p0 = (A,C,random.uniform(-5,5),random.uniform(0,np.pi**2))
+    popt,pcov = curve_fit(f,x_values,y_values,p0,maxfev=10000000,bounds=([0.0,-100.0,-100.0,0.0],[100,100,100,np.pi**2]))
+    (A,C,D,E) = popt
+    eq_label = r'$\Delta G = ' + str(round(A,2)) + ' k_B T \log(L + n) ' + sign(D) + ' ' + str(abs(round(D,2)))+'n/(n+L) ' + sign(E) + ' ' + str(abs(round(E,2))) + '/(n+L)^2 ' + sign(C) + ' ' + str(abs(round(C,2))) + '$'
+    plt.plot(L_values, f(x_values,*popt), color=cols[0], label=eq_label)
+    plt.xlabel('L, combined loop length (nt)')
+                          
+plt.ylabel(r'$\Delta$G loop circularization (kcal/mol)');
+plt.legend(fontsize=8)
+outfile = file_base + "_multiloop.pdf"
+plt.savefig(outfile)
+print(f"saving to {outfile}")
+plt.clf()

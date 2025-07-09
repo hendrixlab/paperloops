@@ -1,9 +1,0 @@
- 	Full Command:                      ./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep2 
-	Memory (kb):                       582340 
-	# SWAP  (freq):                    0 
-	# Waits (freq):                    35 
-	CPU (percent):                     100% 
-	Time (seconds):                    9009.08 
-	Time (hh:mm:ss.ms):                2:30:09 
-	System CPU Time (seconds):         0.86 
-	User   CPU Time (seconds):         9008.29 

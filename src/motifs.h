@@ -42,9 +42,9 @@ void print_list(struct list* list, char* title);
 
 // hash table
 int hash_function(struct hash_table* hash_table, long int key);
-struct hash_table* hash_table_create(int array_size);
-void hash_table_free(struct hash_table* hash_table);
-void hash_table_reset(struct hash_table* hash_table);
+struct hash_table* create_hash_table(int array_size);
+void free_hash_table(struct hash_table* hash_table);
+void reset_hash_table(struct hash_table* hash_table);
 void hash_table_set(struct hash_table* hash_table, long int key, void* value);
 void* hash_table_get(struct hash_table* hash_table, long int key);
 int hash_table_empty(struct hash_table* hash_table, long int key);
@@ -77,6 +77,7 @@ long int compute_motif_id(struct motif* motif, int L_max);
 struct motif* expand_motif(struct motif* motif, int new_loop, int L_max);
 struct motif* rotate_motif(struct motif* motif, int L_max);
 struct motif* get_next_motif(struct motif* motif);
+struct motif* set_next_motif(struct motif* motif, struct motif* next);
 
 /*
  * Tools for building/adding/removing elements from motif_group
@@ -104,10 +105,12 @@ struct steptypes* create_steptypes(int length);
 void free_steptypes(struct steptypes* steps);
 struct steptypes* motif_to_steptypes(struct motif* motif);
 int steptypes_length(struct steptypes* steptypes);
+int steptypes_bp_count(struct steptypes* steptypes);
 char* steptypes_get(struct steptypes* steptypes, int idx);
 void steptypes_set(struct steptypes* steptypes, int idx, char* step);
 struct steptypes* rotate_steptypes(struct steptypes* steptypes);
 struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int end);
+struct steptypes* steptypes_concat(struct steptypes* steps1, struct steptypes* steps2);
 void print_steptypes(struct steptypes* steptypes);
 void fprint_steptypes(FILE* F, struct steptypes* steptypes);
 

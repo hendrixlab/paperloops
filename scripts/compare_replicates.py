@@ -1,0 +1,84 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from brewer2mpl import diverging
+from matplotlib.cm import ScalarMappable
+from scipy.optimize import curve_fit
+from sklearn.metrics import r2_score
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def read_results_file(results_file):
+    F = open(results_file)
+    data = {}
+    max_length = 0
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            label,C_eff,C_eff_err = line.split('\t')
+            if not np.isnan(float(C_eff)):
+                data[label] = (float(C_eff),float(C_eff_err))
+                L = length(label)
+                if L > max_length:
+                    max_length = L
+    return data,max_length
+
+def f(x,m,b):
+    return x*m + b
+
+
+usage = "Usage: " + sys.argv[0] + " <results file 1> <results file 2> <input label>"
+
+if len(sys.argv) != 4:
+    print(usage)
+    exit(0)
+
+results_file1 = sys.argv[1]
+results_file2 = sys.argv[2]
+input_label = sys.argv[3]
+
+results1,max_length = read_results_file(results_file1)
+results2,max_length2 = read_results_file(results_file2)
+
+bmap = diverging.RdYlBu[min(11,max_length+1)]
+colors = bmap.hex_colors
+
+data = []
+error = {}
+for label in results1:
+    if label in results2:
+        L = length(label)
+        data.append((results1[label][0],results2[label][0],label))
+
+data.sort(key=lambda x:x[0])
+x_values,y_values,labels = zip(*data)
+#plt.plot(list(range(10)),list(range(10)),c='k',alpha=0.3,label='y=x')
+R2 = r2_score(x_values,y_values);
+plt.scatter(x_values,y_values,s=3,label='paperloops, ' + input_label + ', ' + r'$R^2 = $' + str(round(R2,5)) ,color='b')
+
+x = np.array(x_values)
+y = np.array(y_values)
+popt,pcov = curve_fit(f,x,y)
+x = np.unique(x)
+#plt.plot(x, f(x,*popt), label="y=%.3fx+%.3f" % tuple(popt), color='r')
+
+plt.xlabel(results_file1)
+plt.ylabel(results_file2)
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel( r'$C_{eff}$' + ' replicate 1')
+plt.ylabel( r'$C_{eff}$' + ' replicate 2')
+
+for item in data:
+    x_value,y_value,label = item
+    if x_value > 0.0:
+        if abs(x_value - y_value)/x_value >= 0.5:
+            xy = (x_value,y_value)
+            print(x_value,y_value,label)
+            plt.annotate(label,xy,ha='right')
+
+plt.legend()
+plt.savefig("replicate_comparison_scatter_" + '_'.join(input_label.split()) + ".pdf")

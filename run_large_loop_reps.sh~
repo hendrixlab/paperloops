@@ -1,9 +1,0 @@
-SGE_Batch -c "./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep1" -r large2_rep1
-sleep 20
-SGE_Batch -c "./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep2" -r large2_rep2
-sleep 20
-SGE_Batch -c "./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep3" -r large2_rep3
-sleep 20
-SGE_Batch -c "./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep4" -r large2_rep4
-sleep 20
-SGE_Batch -c "./bin/paperloops -M large_loops.txt -P data/4ybb_23S.pdb -S data/4ybb_23S.pdb.stems.txt -x large2_rep5" -r large2_rep5

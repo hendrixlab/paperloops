@@ -54,6 +54,8 @@ def read_all_results_file(results_file):
                     print("could not find in colors:",length(label))
                     exit()
                 n = number(label)
+                if n == 1:
+                    color = colors[7]
                 if n not in data:
                     Nloops.append(n)
                     data[n] = {}
@@ -106,8 +108,9 @@ results_file = sys.argv[2]
 data,labels,Nloops = read_all_results_file(all_results_file)
 plt_data = read_results_file(results_file)
 
-fig_sizes = {1:(5,2), 2:(10,5), 3:(15,5), 4:(20,5), 5:(20,5)}
+fig_sizes = {1:(5,2), 2:(10,5), 3:(15,5), 4:(20,5), 5:(20,5), 6:(25,5), 7:(30,5), 8:(30,5)}
 
+first = True
 for n in Nloops:
     if n in fig_sizes:
         plt.figure(figsize=fig_sizes[n])
@@ -115,20 +118,27 @@ for n in Nloops:
         x_labels,y_values,y_err = zip(*plt_data[n])    
         if n==1:
             # plot errorbar just for hairpin loops
-            plt.errorbar(range(len(x_labels)),y_values,y_err)
+            plt.plot(range(len(x_labels)),y_values,c='k',zorder=1,linewidth=1,label='inverse-error weighted average')
         for i in range(len(labels[n])):
             total = len(data[n][labels[n][i]])
             if(total):
                 C_eff,C_eff_err,sizes,colors = zip(*data[n][labels[n][i]])
-                plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=1.0,edgecolors='black',linewidth=0.1)
+                if first:
+                    plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=1.0,edgecolors='black',linewidth=0.1,zorder=2,label='average for steptype rotation')
+                    first = False
+                else:
+                    plt.scatter(total*[i],C_eff,s=sizes,c=colors,alpha=1.0,edgecolors='black',linewidth=0.1,zorder=2)   
             else:
                 print(f"Found no examples in all_results: n={n} ",labels[n][i])
                 exit()
         #plt.yscale('log')
         x_values = range(len(labels[n]))
-        plt.xticks(x_values,labels[n],rotation=90, fontsize=8)
-        plt.xlabel("loop motif lengths (nt)")
-        #plt.ylabel("Effective concentration (M)")    
-        plt.ylabel("\Delta G (kcal/mol)")    
+        plt.xticks(x_values[::3],labels[n][::3],rotation=90, fontsize=8)
+        if n == 1:
+            plt.xlabel("loop length (nt)")
+        else:
+            plt.xlabel("loop motif length (nt)") 
+        plt.ylabel(r'$\Delta G \; (kcal/mol)$')
+        plt.legend(markerscale=4)
         plt.savefig('NN_Circularization_C_eff_n'+str(n)+'.pdf',bbox_inches='tight')
         plt.clf()
