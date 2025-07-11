@@ -72,6 +72,7 @@ long int get_motif_id(struct motif* motif);
 int get_motif_sum(struct motif* motif);
 void print_motif(struct motif* motif, char c);
 void fprint_motif(FILE* F, struct motif* motif, char c);
+int sprint_motif(char* buffer, struct motif* motif, char c);
 long int get_new_id(long int id, int new_num, int new_loop, int L_max);
 long int compute_motif_id(struct motif* motif, int L_max);
 struct motif* expand_motif(struct motif* motif, int new_loop, int L_max);
@@ -104,6 +105,7 @@ struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N);
 struct steptypes* create_steptypes(int length);
 void free_steptypes(struct steptypes* steps);
 struct steptypes* motif_to_steptypes(struct motif* motif);
+int motif_steptypes_length(struct motif* motif);
 int steptypes_length(struct steptypes* steptypes);
 int steptypes_bp_count(struct steptypes* steptypes);
 char* steptypes_get(struct steptypes* steptypes, int idx);
@@ -113,6 +115,7 @@ struct steptypes* steptypes_splice(struct steptypes* steptypes, int start, int e
 struct steptypes* steptypes_concat(struct steptypes* steps1, struct steptypes* steps2);
 void print_steptypes(struct steptypes* steptypes);
 void fprint_steptypes(FILE* F, struct steptypes* steptypes);
+int sprint_steptypes(char* buffer, struct steptypes* steptypes, char c);
 
 #endif
 

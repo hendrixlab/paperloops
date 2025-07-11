@@ -9,29 +9,54 @@
 #include <stdlib.h>
 #include <time.h>
 #include <getopt.h>
+#include <omp.h>
 
-// input 
+// struct to store the output buffer
+struct output_buffer {
+  char** data;
+  int len;
+  int count;
+};
+
+/**********************
+ * FUNCTION TEMPLATES *
+ **********************/
+
+// usage/help menu
+void print_usage();
+
+// output buffer functions
+struct output_buffer* create_output_buffer(int size);
+void output_buffer_append(struct output_buffer* output_buffer, char* buffer);
+char* output_buffer_get(struct output_buffer* output_buffer, int i);
+void free_output_buffer(struct output_buffer* output_buffer);
+
+// input functions
 struct library* read_helix_bb_lib(char* helix_file);
 struct library* read_helix_bp_lib(char* helix_file);
 
-// output 
-void print_usage();
+// output funtions
 void print_motif_counts(int N_min, int N_max, int L_min, int L_max);
 void print_all_motifs(int N_min, int N_max, int L_min, int L_max);
 void print_distance_statistics(char* pdb_file, char* stems_file, char* suffix, double bin_size);
-void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, int N_min, int N_max, int L_min, int L_max, int N_iter, double bin_size, double d_min, int self_avoiding, char* helix_file);
-void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, char* motif_file, int N_iter, double bin_size, double d_min, int self_avoiding, char* helix_file);
+void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, int N_min, int N_max, int L_min, int L_max, int N_samples, int N_threads, double bin_size, double d_min, int self_avoiding, char* helix_file);
+void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, char* motif_file, int N_samples, int N_threads, double bin_size, double d_min, int self_avoiding, char* helix_file);
+
+/********
+ * MAIN *
+ ********/
 
 int main(int argc, char *argv[]) {
-  // default values
 
-  double bin_size = 3.0;
+  // default values
+  double bin_size = 3.0; // should probably just force the bin size to be same as d_min
   double d_min = 3.0;
   int N_min = 2;
   int N_max = 5;
   int L_min = 0;
   int L_max = 4;
   int N_samples = 2000;
+  int N_threads = 1;
   int counts_only = 0;
   int dist_stats = 0;
   int self_avoiding = 0;
@@ -42,16 +67,19 @@ int main(int argc, char *argv[]) {
   char* helix_file = NULL;
   char opt;
   
-  while((opt = getopt(argc,argv,"P:S:n:N:l:L:b:m:s:M:H:x:cdah")) != -1) {
+  while((opt = getopt(argc,argv,"n:N:l:L:b:m:s:t:P:S:M:H:x:cdah")) != -1) {
     switch(opt) {
-    case 'P': // PDB file, required for sampling transforms
-      pdb_file = malloc((strlen(optarg)+1) * sizeof(char));
-      strcpy(pdb_file,optarg);
+      // First the run-modes
+    case 'c':
+      counts_only = 1;
       break;
-    case 'S': // stems file, required for sampling transforms
-      stems_file = malloc((strlen(optarg)+1) * sizeof(char));
-      strcpy(stems_file,optarg);
+    case 'd':
+      dist_stats = 1;
       break;
+    case 'a':
+      self_avoiding = 1;
+      break;
+      // The tunable parameters
     case 'n': // N_min, minimum number of loops to consider
       N_min = atoi(optarg);
       break;
@@ -67,15 +95,23 @@ int main(int argc, char *argv[]) {
     case 's': // N_samples, the number of iterations/number of random trajectories to sample 
       N_samples = atoi(optarg);
       break;
+    case 't': // N_threads, the number of threads used in OMP parallel programmaing over motifs
+      N_threads = atoi(optarg);
+      break;
     case 'b': // bin_size, the size of bins for the collision detector.
       bin_size = atof(optarg);
       break;
     case 'm': // d_min, the minimum distance for collision detection
       d_min = atof(optarg);
       break;
-    case 'x': // suffix to add to the output files
-      suffix = malloc((strlen(optarg)+1) * sizeof(char));
-      strcpy(suffix,optarg);
+      // The input files that can be provided.
+    case 'P': // PDB file, required for sampling transforms
+      pdb_file = malloc((strlen(optarg)+1) * sizeof(char));
+      strcpy(pdb_file,optarg);
+      break;
+    case 'S': // stems file, required for sampling transforms
+      stems_file = malloc((strlen(optarg)+1) * sizeof(char));
+      strcpy(stems_file,optarg);
       break;
     case 'M': // motif file, required for sampling transforms
       motif_file = malloc((strlen(optarg)+1) * sizeof(char));
@@ -85,14 +121,9 @@ int main(int argc, char *argv[]) {
       helix_file = malloc((strlen(optarg)+1) * sizeof(char));
       strcpy(helix_file,optarg);
       break;
-    case 'c':
-      counts_only = 1;
-      break;
-    case 'd':
-      dist_stats = 1;
-      break;
-    case 'a':
-      self_avoiding = 1;
+    case 'x': // suffix to add to the output files
+      suffix = malloc((strlen(optarg)+1) * sizeof(char));
+      strcpy(suffix,optarg);
       break;
     case 'h':
       print_usage();
@@ -112,12 +143,14 @@ int main(int argc, char *argv[]) {
       print_usage();
     }
     if(motif_file) {      
-      print_C_eff_for_motif_file(pdb_file,stems_file,suffix,motif_file,N_samples,bin_size,d_min,self_avoiding,helix_file);
+      print_C_eff_for_motif_file(pdb_file,stems_file,suffix,motif_file,N_samples,N_threads,
+				 bin_size,d_min,self_avoiding,helix_file);
     } else {
       if(dist_stats) {
 	print_distance_statistics(pdb_file,stems_file,suffix,bin_size);
       } else {
-	print_C_eff_for_all_motifs(pdb_file,stems_file,suffix,N_min,N_max,L_min,L_max,N_samples,bin_size,d_min,self_avoiding,helix_file);
+	print_C_eff_for_all_motifs(pdb_file,stems_file,suffix,N_min,N_max,L_min,L_max,N_samples,N_threads,
+				   bin_size,d_min,self_avoiding,helix_file);
       }
     }
   } else if(motif_file && !(pdb_file && stems_file)) {
@@ -137,9 +170,75 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-/***************************
- * Core action subroutines *
- ***************************/
+
+/********************
+ * Usage/Help Menu  *
+ ********************/
+
+void print_usage() {
+  printf("\nUsage: \n\n");
+  printf("./paperloops -P <RNA PDB_file> -S <stems file> -n <N_min> -N <N_max> -l <L_min> -L <L_max> [options]\n\n");
+  printf("Options:\n");
+  printf("\t-c : Enumerate the number of possible loop motifs and print to a file.\n\n");
+  printf("\t-d : Print distance statistics only for the provided PDB file\n\n");  
+  printf("\t-a : Run in self-avoiding model (\"real\" polymers, not ideal).\n\n");  
+  printf("\t-l <int> : L_min, the minimum total loop length to consider. [default: 0]\n\n");
+  printf("\t-L <int> : L_max, the maximum total loop length to consider. [default: 4]\n\n");
+  printf("\t-n <int> : N_min, the minimum number of loops to consider. [default: 2]\n\n");
+  printf("\t-N <int> : N_max, the maximum number of loops to consider. [default: 5]\n\n");
+  printf("\t-s <int> : N_samples, the number of iterations/random trajectories to consider [default 2000].\n\n");
+  printf("\t-t <int> : N_threads, the number of threads to use for parallel implementation [default 1]");
+  printf("\t-b <float> : bin_size, the bin size for the detector patches.\n\n");
+  printf("\t-m <float> : d_min, the minimum distance to be considered a collision.\n\n");
+  printf("\t-P <PDB file> : the path to a PDB file to read in. [default: None]\n\n");
+  printf("\t-S <Stems file> : the path to a stems file generated by rna_motif for PDB file. [default: None]\n\n");
+  printf("\t-M <Motif file> : the path to a motif file to compute C_eff for instead of enumerating all of them.\n\n");
+  printf("\t-H <Helix file> : the path to a PDB file with an ideal helix: 1rna.pdb.\n\n");
+  printf("\t-x <output suffix> : a suffix added to the output files. [default: No suffix added]\n\n");
+  printf("\t-h : print this help menu\n\n");
+  exit(1);
+}
+
+/*******************
+ * OUTPUT BUFFER   *
+ *******************/
+
+struct output_buffer* create_output_buffer(int size) {
+  struct output_buffer* output_buffer = malloc(sizeof(output_buffer));
+  output_buffer->len = size;
+  output_buffer->count = 0;
+  return output_buffer;
+}
+
+void free_output_buffer(struct output_buffer* output_buffer) {
+  assert(output_buffer);
+  assert(output_buffer->data);
+  int len = output_buffer->len;
+  for(int i=0; i<len; i++) {
+    char* buffer = output_buffer_get(output_buffer, i);
+    free(buffer);
+  }
+  free(output_buffer->data);
+}
+
+void output_buffer_append(struct output_buffer* output_buffer, char* buffer) {
+  assert(output_buffer);
+  int i = output_buffer->count;
+  output_buffer->data[i] = buffer;
+  output_buffer->count++;
+}
+
+char* output_buffer_get(struct output_buffer* output_buffer, int i) {
+  assert(output_buffer);
+  int count = output_buffer->count;
+  int len = output_buffer->len;
+  assert((0 <= i)&&(i < count)&&(i < len));
+  return output_buffer->data[i];
+}
+
+/*******************
+ * INPUT FUNCTIONS *
+ *******************/
 
 struct library* read_helix_bb_lib(char* helix_file) {
   struct library* helix_bb_lib = NULL;
@@ -170,27 +269,9 @@ struct library* read_helix_bp_lib(char* helix_file) {
   return helix_bp_lib;
 }
 
-void print_usage() {
-  printf("\nUsage: \n\n");
-  printf("./paperloops -P <RNA PDB_file> -S <stems file> -n <N_min> -N <N_max> -l <L_min> -L <L_max> [options]\n\n");
-  printf("Options:\n");
-  printf("\t-c : Enumerate the number of possible loop motifs and print to a file.\n\n");
-  printf("\t-d : Print distance statistics only\n\n");  
-  printf("\t-l <int> : L_min, the minimum total loop length to consider. [default: 0]\n\n");
-  printf("\t-L <int> : L_max, the maximum total loop length to consider. [default: 4]\n\n");
-  printf("\t-n <int> : N_min, the minimum number of loops to consider. [default: 2]\n\n");
-  printf("\t-N <int> : N_max, the maximum number of loops to consider. [default: 5]\n\n");
-  printf("\t-P <PDB file> : the path to a PDB file to read in. [default: None]\n\n");
-  printf("\t-S <stems file> : the path to a stems file generated by rna_motif for PDB file. [default: None]\n\n");
-  printf("\t-s <int> : N_samples, the number of iterations/random trajectories to consider [default 2000].\n\n");
-  printf("\t-b <float> : bin_size, the bin size for the detector patches.\n\n");
-  printf("\t-m <float> : d_min, the minimum distance to be considered a collision.\n\n");
-  printf("\t-M <motif file> : the path to a motif file to compute C_eff for instead of enumerating all of them.\n\n");
-  printf("\t-H <helix file> : the path to a PDB file with an ideal helix: 1rna.pdb.\n\n");
-  printf("\t-x <output suffix> : a suffix added to the output files. [default: No suffix added]\n\n");
-  printf("\t-h : print this help menu\n\n");
-  exit(1);
-}
+/********************
+ * OUTPUT FUNCTIONS *
+ ********************/
 
 void print_motif_counts(int N_min, int N_max, int L_min, int L_max) {
   // print an output file of all theoretical motif counts based on equation
@@ -263,7 +344,11 @@ void print_distance_statistics(char* pdb_file, char* stems_file, char* suffix, d
   free_bp_array(basepairs); // maybe want to save for later?   
 }
 
-void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, int N_min, int N_max, int L_min, int L_max, int N_samples, double bin_size, double d_min, int self_avoiding, char* helix_file) {
+/*********************
+ * CORE CALCULATIONS *
+ *********************/
+
+void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, int N_min, int N_max, int L_min, int L_max, int N_samples, int N_threads, double bin_size, double d_min, int self_avoiding, char* helix_file) {
   // theoretical motif counts
   printf("Enumerating possible motifs for N_min=%d to N_max=%d and L_min=%d to L_max=%d.\n",N_min,N_max,L_min,L_max);
   int** N = necklace_counts_fixed_length(N_max,L_max);
@@ -286,20 +371,21 @@ void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, 
   struct library* helix_bp_lib = read_helix_bp_lib(helix_file);
   
   // define output files, account for possible suffix
-  char out_all_file[50] = "C_eff_all_results.txt";
-  char out_file[50] = "C_eff_results.txt";
-  char sa_report[50] = "collision_report.txt"; // defined even for non S.A. mode
+  char out_all_file[50] = "C_eff_all_results";
+  char out_file[50] = "C_eff_results";
+  char sa_report[50] = "collision_report"; // defined even for non S.A. mode
   if(suffix) {
-    strcpy(out_all_file,"C_eff_all_results_");
-    strcpy(out_file,"C_eff_results_");
-    strcpy(sa_report,"collision_report_");
+    strcat(out_all_file,"_");
+    strcat(out_file,"_");
+    strcat(sa_report,"_");
     strcat(out_all_file,suffix);
     strcat(out_file,suffix);
     strcat(sa_report,suffix);
-    strcat(out_all_file,".txt");
-    strcat(out_file,".txt");
-    strcat(sa_report,".txt");
   }
+  strcat(out_all_file,".txt");
+  strcat(out_file,".txt");
+  strcat(sa_report,".txt");
+
   FILE* OUT_ALL = fopen(out_all_file,"w");
   FILE* OUT = fopen(out_file,"w");
   if(self_avoiding) {
@@ -309,22 +395,30 @@ void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, 
     fclose(SA_REPORT);
   }
   printf("Writing C_eff results to: %s and %s\n",out_file,out_all_file);
-  
+
   for(int n=N_min; n<=N_max; n++) {
     for(int L=L_min; L<=L_max; L++) {
+      // update standard output log
       int count = get_motif_group_count(M[n][L]);
       printf("# N_pred(n=%d,L=%d)=%d, N_obs=%d\n",n,L,N[n][L],count);
       fflush(stdout);
+
+      // parallel section over each motif for this n,L combination, count can be quite large
+      //#pragma omp parallel for
       for(int i=0; i<count; i++) {
 	struct motif* m = get_motif(M[n][L],i);
+	struct motif* m0 = m; // reference motif among rotations
+	int steps_length = motif_steptypes_length(m);
+	// prepare the output buffer
+	struct output_buffer* output_buffer = create_output_buffer(steps_length);
+	// loop through the motif rotations
 	while(m) {
 	  // here we have a motif, part of a necklace, first one should be lowest lexicographically.
 	  struct steptypes* steps = motif_to_steptypes(m);	  	  
-	  fprint_motif(OUT,m,'\t');
 	  double num = 0.0;
 	  double den = 0.0;
 	  // average over the rotations of the steptypes:
-	  for(int j=0; j<steptypes_length(steps); j++) {
+	  for(int j=0; j<steps_length; j++) {
 	    struct array* C_eff_stats;
 	    if(self_avoiding) {
 	      C_eff_stats = get_C_eff_both_dir_sa(m,steps,bb_lib,bp_lib,N_samples,bin_size,d_min,helix_bb_lib,helix_bp_lib,sa_report);
@@ -333,9 +427,17 @@ void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, 
 	    }
 	    double C_eff_mean = array_get(C_eff_stats,0);
 	    double C_eff_error = array_get(C_eff_stats,1);
-	    fprint_motif(OUT_ALL,m,'\t');
-	    fprintf(OUT_ALL,"%.8f\t%.8f\n",C_eff_mean,C_eff_error);
-	    double C_eff_relerr = C_eff_error / C_eff_mean;
+
+	    // write stats to the output buffer
+	    char buffer[300]; // allocated buffer to print the stats for this record
+	    int offset = sprint_motif(buffer,m,'\t');
+	    offset += sprint_steptypes(buffer+offset,steps,'\t');
+	    offset += sprintf(buffer+offset,"%.8f\t%.8f\n",C_eff_mean,C_eff_error);
+	    output_buffer_append(output_buffer,buffer);
+	    //printf("%d\n%s\n",offset);
+
+	    // compute relative error 
+	    double C_eff_relerr = C_eff_error / C_eff_mean;	    
 	    // logarithmic, inverse-relerr weighted average
 	    num += log(C_eff_mean)/(C_eff_relerr*C_eff_relerr);
 	    den += 1.0/(C_eff_relerr*C_eff_relerr);
@@ -343,16 +445,27 @@ void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, 
 	    steps = rotate_steptypes(steps);
 	    // memory management:
 	    free_array(C_eff_stats);
-	    fflush(OUT_ALL);
 	  }
 	  // weighted average over steptypes rotations:
 	  double full_C_eff_mean = exp(num/den);
 	  double full_C_eff_err = sqrt(1.0/den)*full_C_eff_mean;
-	  fprintf(OUT,"%.8f\t%.8f\n",full_C_eff_mean,full_C_eff_err);
-	  fflush(OUT);
+	  
+	  //#pragma omp critical
+	  //{
+	    // print all motif steptype rotations
+	    for(int i=0; i<steps_length; i++) {
+	      fprintf(OUT_ALL, "%s", output_buffer_get(output_buffer,i));
+	    }
+	    fflush(OUT_ALL);
+	    free_output_buffer(output_buffer);
+	    // print average of all rotations
+	    fprint_motif(OUT, m0, '\t');
+	    fprintf(OUT,"%.8f\t%.8f\n",full_C_eff_mean,full_C_eff_err);
+	    fflush(OUT);
+	    //}
 	  m = get_next_motif(m); // rotate the motif to get an equivalent one in different rotation
 	  free_steptypes(steps);
-	}
+        }
       }
     }
   }
@@ -360,7 +473,7 @@ void print_C_eff_for_all_motifs(char* pdb_file, char* stems_file, char* suffix, 
   free_library(bp_lib);   
 }
 
-void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, char* motif_file, int N_samples, double bin_size, double d_min, int self_avoiding, char* helix_file) {
+void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, char* motif_file, int N_samples, int N_threads, double bin_size, double d_min, int self_avoiding, char* helix_file) {
   printf("reading in PDB file: %s\n",pdb_file);
   struct rna_data* RNA = read_pdb_file(pdb_file);
   printf("Building backbone libraries:\n");
@@ -404,16 +517,23 @@ void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, 
   printf("Writing C_eff results to: %s and %s\n",out_file,out_all_file);
 
   int count = get_motif_group_count(motif_group);
-  printf("count = %d\n",count);
+  printf("count = %d motifs\n",count);
+
+  #pragma omp parallel for num_threads(N_threads)
   for(int i=0; i<count; i++) {
+    // extract the i-th motif
     struct motif* m = get_motif(motif_group,i);
+    struct motif* m0 = m; // reference motif among rotations
+    int steps_length = motif_steptypes_length(m);
+    // prepare the output buffer
+    struct output_buffer* output_buffer = create_output_buffer(steps_length);
+    // loop through the motif rotations
     while(m) {
       struct steptypes* steps = motif_to_steptypes(m);	  	  
-      fprint_motif(OUT,m,'\t');
       double num = 0.0;
       double den = 0.0;
       // average over the rotations of the steptypes:
-      for(int j=0; j<steptypes_length(steps); j++) {
+      for(int j=0; j<steps_length; j++) {
 	struct array* C_eff_stats;
 	if(self_avoiding) {
 	  C_eff_stats = get_C_eff_both_dir_sa(m,steps,bb_lib,bp_lib,N_samples,bin_size,d_min,helix_bb_lib,helix_bp_lib,sa_report);
@@ -422,8 +542,15 @@ void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, 
 	}
 	double C_eff_mean = array_get(C_eff_stats,0);
 	double C_eff_error = array_get(C_eff_stats,1);
-	fprint_motif(OUT_ALL,m,'\t');
-	fprintf(OUT_ALL,"%.8f\t%.8f\n",C_eff_mean,C_eff_error);
+
+	// write stats to the output buffer
+	char buffer[300]; // allocated buffer to print the stats for this record
+	int offset = sprint_motif(buffer,m,'\t');
+	offset += sprint_steptypes(buffer+offset,steps,'\t');
+	offset += sprintf(buffer+offset,"%.8f\t%.8f\n",C_eff_mean,C_eff_error);
+	output_buffer_append(output_buffer,buffer);
+	
+	// compute relative error 
 	double C_eff_relerr = C_eff_error / C_eff_mean;
 	// logarithmic, inverse-relerr weighted average
 	num += log(C_eff_mean)/(C_eff_relerr*C_eff_relerr);
@@ -432,13 +559,21 @@ void print_C_eff_for_motif_file(char* pdb_file, char* stems_file, char* suffix, 
 	steps = rotate_steptypes(steps);
 	// memory management:
 	free_array(C_eff_stats);
-	fflush(OUT_ALL);
       }
       // weighted average over steptypes rotations:
       double full_C_eff_mean = exp(num/den);
       double full_C_eff_err = sqrt(1.0/den)*full_C_eff_mean;
-      fprintf(OUT,"%.8f\t%.8f\n",full_C_eff_mean,full_C_eff_err);
-      fflush(OUT);
+      #pragma omp critical
+      {
+	for(int i=0; i<steps_length; i++) {
+	  fprintf(OUT_ALL, "%s", output_buffer_get(output_buffer,i));
+	}
+	free_output_buffer(output_buffer);
+	fflush(OUT_ALL);
+	fprint_motif(OUT,m0,'\t');
+	fprintf(OUT,"%.8f\t%.8f\n",full_C_eff_mean,full_C_eff_err);
+	fflush(OUT);
+      }
       m = get_next_motif(m); // rotate the motif to get an equivalent one in different rotation
       free_steptypes(steps);      
     }

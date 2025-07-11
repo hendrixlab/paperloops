@@ -513,6 +513,22 @@ void fprint_motif(FILE* F, struct motif* motif, char c) {
   }  
 }
 
+int sprint_motif(char* buffer, struct motif* motif, char c) {
+  assert(motif);
+  int n = get_motif_num(motif);
+  int offset = 0;
+  //fprintf(F,"%d\t(",motif->id);
+  for(int i=0; i<n; i++) {
+    offset += sprintf(buffer+offset,"%d",motif->loop[i]);
+    if(i == n-1) {
+      offset += sprintf(buffer+offset,"%c",c);
+    } else {
+      offset += sprintf(buffer+offset,"-");
+    }
+  }
+  return offset;
+}
+
 long int get_new_id(long int id, int new_num, int new_loop, int L_max) {
   long int new_id = id*(L_max+1) + new_loop; // next place in base-(L_max+1) number
   return new_id;
@@ -822,6 +838,12 @@ struct steptypes* motif_to_steptypes(struct motif* motif) {
   return steptypes;
 }
 
+int motif_steptypes_length(struct motif* motif) {
+  int num = get_motif_num(motif);
+  int sum = get_motif_sum(motif);
+  return 2*num+sum;
+}
+
 int steptypes_length(struct steptypes* steptypes) {
   assert(steptypes);
   return steptypes->length;
@@ -907,4 +929,19 @@ void fprint_steptypes(FILE* F, struct steptypes* steptypes) {
       fprintf(F,"%s-",step);
     }
   }
+}
+
+int sprint_steptypes(char* buffer, struct steptypes* steptypes, char c) {
+  int offset = 0;
+  int n = steptypes_length(steptypes);
+  for(int i=0; i<steptypes_length(steptypes); i++) {
+    char* step = steptypes_get(steptypes,i);
+    if(i == n-1) {
+      offset += sprintf(buffer+offset,"%s",step);
+    } else {
+      offset += sprintf(buffer+offset,"%s-",step);
+    }
+  }
+  offset += sprintf(buffer+offset,"%c",c);
+  return offset;
 }

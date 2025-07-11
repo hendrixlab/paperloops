@@ -1,7 +1,7 @@
 CC=cc -std=c99 -g
 
 paperloops: paperloops.c rna_data.o simulation.o transform.o rna_io.o motifs.o vectorfun.o 
-	$(CC) paperloops.c rna_data.o rna_io.o simulation.o transform.o motifs.o vectorfun.o -o ../bin/paperloops -lm
+	$(CC) -fopenmp paperloops.c rna_data.o rna_io.o simulation.o transform.o motifs.o vectorfun.o -o ../bin/paperloops -lm
 
 simulation.o: simulation.c simulation.h transform.c transform.h transform.o vectorfun.c vectorfun.h vectorfun.o
 	$(CC) -c simulation.c vectorfun.o transform.o -lm
