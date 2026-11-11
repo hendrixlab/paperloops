@@ -1,0 +1,259 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+from scipy.optimize import curve_fit
+from matplotlib.colors import LinearSegmentedColormap
+import random
+from math import sqrt
+
+########
+# MAIN #
+########
+
+def main():
+    usage = "Usage: " + sys.argv[0] + " <C_eff results file list>"
+    
+    if len(sys.argv) != 2:
+        print(usage)
+        exit(0)
+        
+    results_file_list = sys.argv[1]
+    file_base = os.path.splitext(os.path.basename(results_file_list))[0]
+    fit_equation = False
+    print_table = False
+
+    combined = read_results_file_list(results_file_list)
+
+    #colors = ['#9e0142','#d53e4f','#f46d43','#fdae61','#abdda4','#66c2a5','#3288bd','#5e4fa2','#3f007d']
+    # new colors from Gemini
+    colors = [
+        "#9e0142",  # Deep Crimson
+        "#f46d43",  # Vibrant Orange
+        "#a6d96a",  # Lime Green (noticeably distinct from dark green)
+        "#1a9641",  # Dark Forest Green
+        "#43a2ca",  # Cyan Blue
+        "#08519c",  # Deep Navy Blue
+        "#5e4fa2",  # Indigo Purple
+        "#ae017e",  # Magenta Pink
+        "#4d004b",  # Dark Plum
+    ]
+    
+    kB = 1.987204259e-3
+    T = 310.15
+    max_n = 0
+
+    print_data = {}
+    for n in combined:
+        if n not in print_data:
+            print_data[n] = {}
+        for L in combined[n]:
+            if L not in print_data[n]:
+                print_data[n][L] = {}
+            for label,dG in combined[n][L]:
+                min_label = lowest_rotation(label)
+                #print(label,"->",min_label)
+                if min_label not in print_data[n][L]:
+                    print_data[n][L][min_label] = []
+                print_data[n][L][min_label].append(dG)
+            if print_table:
+                for label in print_data[n][L]:
+                    A = asymmetry(label)
+                    avg_dG = np.mean(print_data[n][L][label])
+                    print(n,L,label,A,avg_dG)
+                    
+    avg_all = {}
+    data = {}
+    for n in combined:
+        data[n] = []
+        for L in combined[n]:
+            label,dG = zip(*combined[n][L])
+            mean_dG = np.mean(list(dG))
+            if L > 0:
+                if L not in avg_all:
+                    avg_all[L] = []
+                avg_all[L].append(mean_dG)
+                data[n].append((n,L,mean_dG,colors[n-1]))
+            if n > max_n:
+                max_n = n
+        data[n].sort(key=lambda x:x[1])
+
+    params = []
+    keys = sorted(list(data.keys()))
+    # averages for all loops
+    L_values = []
+    dG_values = []
+    length_keys = sorted(avg_all.keys())
+    for L in length_keys:
+        L_values.append(L)
+        avg_dG = np.mean(avg_all[L])
+        dG_values.append(avg_dG)
+    L_values = np.array(L_values)
+    dG_values = np.array(dG_values)
+
+    plt.figure(figsize=(8.0,5))
+    #plt.scatter(L_values,dG_values,s=5,label='Average',c='gray')
+    plt.plot(L_values,dG_values,label='Average',c='gray')
+
+    if fit_equation:
+        popt_ideal,pcov = curve_fit(f_ideal,L_values,dG_values,maxfev=100000,bounds=([-100,0.0,-100.0],100))
+        (A,B,C) = popt_ideal
+        eq_label = r'$\Delta G_{avg} ='+str(round(A,2))+' k_B T \log(L + ' + str(round(B,2)) + ') + ' + str(round(C,2)) + '$'
+        plt.plot(L_values, f_ideal(L_values,*popt_ideal), color='gray', label=eq_label)
+
+    for n in keys:
+        # x_values are the lengths, y_values are the delta G values
+        n_values,L_values,dG_values,cols = zip(*data[n])
+        n_values = np.array(n_values)
+        L_values = np.array(L_values)
+        x_values = (L_values,n_values)
+        y_values = np.array(dG_values)
+        #plt.scatter(L_values,y_values,s=5,label='paperloops, n='+str(n),c=cols)
+        plt.plot(L_values,y_values,label='paperloops, n='+str(n),c=cols[0])
+        if fit_equation:
+            p0 = (A,C,random.uniform(-5,5),random.uniform(0,np.pi**2))
+            popt,pcov = curve_fit(f,x_values,y_values,p0,maxfev=10000000,bounds=([0.0,-100.0,-100.0,0.0],[100,100,100,np.pi**2]))
+            (A,C,D,E) = popt
+            eq_label = r'$\Delta G = ' + str(round(A,2)) + ' k_B T \log(L + n) ' + sign(D) + ' ' + str(abs(round(D,2)))+'n/(n+L) ' + sign(E) + ' ' + str(abs(round(E,2))) + '/(n+L)^2 ' + sign(C) + ' ' + str(abs(round(C,2))) + '$'
+            plt.plot(L_values, f(x_values,*popt), color=cols[0], label=eq_label)
+
+    plt.xlabel('L, combined loop length (nt)')                          
+    plt.ylabel('Average Angle Squared')
+    plt.legend(fontsize=8)
+    outfile = file_base + "_theta_sq.pdf"
+    plt.savefig(outfile)
+    print(f"saving to {outfile}")
+    plt.clf()
+
+
+def f_ideal(x,Af,Bf,Cf):
+    kB = 1.987204259e-3
+    T = 310.15
+    return Af*kB*T*np.log(x + Bf) + Cf
+
+def f(x,Af,Cf,Df,Ef):
+    L,n = x
+    kB = 1.987204259e-3
+    T = 310.15
+    return Af*kB*T*np.log(L + n) + Df*(n/(n+L)) +  Ef/((n+L)**2) + Cf
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    count = 0
+    for L in label.split('-'):
+        if(L):
+            count += 1
+    return count
+
+def rotate(label):
+    lengths = label.split('-')
+    rotated = [lengths[len(lengths)-1]] + lengths[:len(lengths)-1]
+    return '-'.join(rotated)
+
+def less_than(label1,label2) :    
+    lengths1 = [int(L) for L in label1.split('-') if(L)]
+    lengths2 = [int(L) for L in label2.split('-') if(L)]
+    #print("less_than:",lengths1,lengths2)
+    for i in range(len(lengths1)):
+        if lengths1[i] < lengths2[i]:
+            return True
+        elif lengths1[i] > lengths2[i]:
+            return False
+        else:
+            continue
+    print(f"unexpected condition in less_than: {label1} {label2}")
+    exit()
+
+def lowest_rotation(label):
+    #print("passed in:",label)
+    min_label = label
+    for i in range(count(label)-1):
+        rotation = rotate(label)
+        #print(">",i,label,rotation)
+        if label == rotation:
+            #print("label is rotation")
+            return min_label
+        if rotation == min_label and i > 0:
+            #print("label is min_label")
+            return min_label
+        if less_than(rotation,min_label):
+            #print("found new min")
+            min_label = rotation
+        label = rotation
+    return min_label
+
+def asymmetry(label):
+    lengths = [int(L) for L in label.split('-')]
+    n_loops = len(lengths)
+    sum = 0.0
+    for i in range(len(lengths)):
+        fivePrime = lengths[i-1] # -1 is the last element
+        threePrime = lengths[i]
+        diff = abs(fivePrime - threePrime)
+        sum += diff/n_loops
+    #asymmetry = min(2.0,sum)
+    #return asymmetry
+    return sum
+
+def sign(x):
+    if x >= 0:
+        return '+'
+    else:
+        return '-'
+
+#########
+# INPUT #
+#########
+
+def read_results_file_list(results_file_list):
+    F = open(results_file_list)
+    combined = {}
+    for line in F:
+        results_file = line.strip()
+        print(f'reading {results_file}')
+        results = read_results_file(results_file)
+        for n in results:
+            if n not in combined:
+                combined[n] = {}
+            for L in results[n]:
+                if L not in combined[n]:
+                    combined[n][L] = []
+                combined[n][L].extend(results[n][L])                
+    return combined
+
+def read_results_file(results_file):
+    F = open(results_file)
+    kB = 1.987204259e-3
+    T = 310.15
+    results = {}
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.strip()
+            line = line.replace(',','\t')
+            line = line.replace('\x01','\t')
+            if len(line.split()) == 8:
+                index,n,L,label,C_eff,C_eff_err,dist_sq,angle_sq = line.split()
+                avg_theta_sq = sqrt(float(angle_sq))
+                n = int(n)
+                #count(label)
+                if n not in results:
+                    results[n] = {}
+                L = int(L)
+                #length(label)
+                if L not in results[n]:
+                    results[n][L] = []
+                results[n][L].append((label,avg_theta_sq))
+            else:
+                print(f'incomplete line: "{line}"')
+                print(f'{len(line.split())} columns')
+                if len(line.split()) != 9:
+                    print('yas')
+                exit()
+    return results
+
+
+# run main()
+main()

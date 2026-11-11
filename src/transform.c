@@ -18,35 +18,6 @@
 
 //const double pi = 3.1415926535898;
 
-/**********************************************************
- * Data structures for transforms and transform libraries *
- **********************************************************/
-
-struct frame {
-  double* ctr;
-  double** M;
-  double* EV; // Euler vector
-  int num;
-};
-
-struct trace {
-  struct frame** data;
-  int len;
-  int cap;
-};
-
-struct transform {
-  double* t; // translation
-  double** R; // rotation
-  char label[10];
-};
-
-struct library {
-  struct transform** data;
-  int len;
-  int cap;
-};
-
 /**********************
  * Methods for frames *
  **********************/
@@ -68,6 +39,7 @@ void free_frame(struct frame* f) {
 }
 
 struct frame* compute_frame(struct nuc* n) {
+  // create a frame
   struct frame* f = create_frame(1.0);
   // compute frame translation and rotation
   struct atom* a = get_backbone_atom_by_name(n,"C5'"); 
@@ -88,7 +60,7 @@ struct frame* compute_frame(struct nuc* n) {
   // define the frame values:
   set_vector(f->ctr,atom_coord(a));
   set_matrix(f->M,M_T);
-  f->num = nuc_num(n);
+  set_frame_num(f,nuc_num(n));
   // some memory cleanup:
   free_vector(b_minus_a);
   free_vector(c_minus_b);
@@ -104,9 +76,9 @@ struct frame* compute_frame(struct nuc* n) {
 
 struct frame* reverse_frame(struct frame* f) {
   struct frame* f_rev = create_frame(1.0);
-  double** M_inv = inverse(f->M);
+  double** M_inv = inverse(f->M);  // transpose should work and seems faster
   double* ctr_neg = scale_vector(f->ctr,-1.0);
-  double* ctr_rev = matvec_product(M_inv,ctr_neg); // transpose should work and seems faster
+  double* ctr_rev = matvec_product(M_inv,ctr_neg);
   set_vector(f_rev->ctr,ctr_rev);
   set_matrix(f_rev->M,M_inv);
   free_vector(ctr_neg);
@@ -133,6 +105,24 @@ struct frame* average_frames(struct frame* f1, struct frame* f2) {
   return f_avg;
 }
 
+double get_frame_distance_diff(struct frame* f1, struct frame* f2) {
+  double* diff = subtract(get_frame_center(f1),get_frame_center(f2));
+  double distance = norm(diff);
+  free_vector(diff);
+  return distance;
+}
+
+double get_frame_angle_diff(struct frame* f1, struct frame* f2) {
+  double** M1_inv = inverse(get_frame_orientation(f1));
+  double** R_diff = matmat_product(M1_inv,get_frame_orientation(f2));
+  double* EV = compute_euler_vector(R_diff);
+  double angle = norm(EV);
+  free_matrix(M1_inv);
+  free_matrix(R_diff);
+  free_vector(EV);
+  return angle;
+}
+
 double* get_frame_center(struct frame* f) {
   return f->ctr;
 }
@@ -148,6 +138,13 @@ double** get_frame_orientation(struct frame* f) {
 void set_frame_orientation(struct frame* f, double** M) {
   set_matrix(f->M,M);
 }
+
+void add_frame_euler_vector(struct frame* f) {
+  double* EV = compute_euler_vector(get_frame_orientation(f));
+  set_frame_euler_vector(f,EV);
+  free_vector(EV); // set_vector assigns values element-by-element so original vector needs to be freed
+}
+
 void set_frame_euler_vector(struct frame* f, double* EV) {
   //printf("test: %.3f %.3f %.3f\n",EV[0],EV[1],EV[2]);
   set_vector(f->EV,EV);
@@ -164,6 +161,8 @@ int get_frame_num(struct frame* f) {
 void set_frame_num(struct frame* f, int num) {
   f->num = num;
 }
+
+// T6 Methods
 
 double get_T6_value(struct frame* f, int i) {
   if(0 <= i && i < 3) {
@@ -270,8 +269,17 @@ void set_frame(struct trace* trace, int idx, struct frame* f) {
   }
 }
 
-void get_trace_min_bounds(struct trace* trace, double* min) {
+double* get_trace_min_bounds(struct trace* trace, double* input_min) {
+  // min vector passed in and updated to allow custom initial value for min
   assert(trace);
+  // initialization, optional input_min for running min updates
+  double* min = create_vector();
+  if(input_min) {
+    min = input_min;
+  } else {
+    min[0] = min[1] = min[2] = 1000000000.0;    
+  }
+  // find actual min from the trace
   for(int i=0; i<trace_length(trace); i++) {
     struct frame* f = get_frame(trace,i);
     double* x = get_frame_center(f);
@@ -282,10 +290,19 @@ void get_trace_min_bounds(struct trace* trace, double* min) {
       }
     }
   }
+  return min;
 }
 
-void get_trace_max_bounds(struct trace* trace, double* max) {
+double* get_trace_max_bounds(struct trace* trace, double* input_max) {
   assert(trace);
+  // set up initial values
+  double* max = create_vector();
+  if(input_max) {
+    max = input_max;
+  } else {
+    max[0] = max[1] = max[2] = -1000000000.0;
+  }
+  // find max from trace
   for(int i=0; i<trace_length(trace); i++) {
     struct frame* f = get_frame(trace,i);
     double* x = get_frame_center(f);
@@ -295,14 +312,16 @@ void get_trace_max_bounds(struct trace* trace, double* max) {
       }
     }
   }
+  return max;
 }
 
 /*********************************
  * Tools for transform libraries *
  *********************************/
 
-struct library* create_library() {
-  struct library* lib = malloc(sizeof(struct library));
+struct transform_library* create_transform_library() {
+  // dynamic array for storing transforms
+  struct transform_library* lib = malloc(sizeof(struct transform_library));
   assert(lib);
 
   lib->data = malloc(sizeof(struct transform*));
@@ -313,9 +332,9 @@ struct library* create_library() {
   return lib;
 }
 
-void free_library(struct library* lib) {
+void free_transform_library(struct transform_library* lib) {
   assert(lib);  
-  for(int i=0; i<library_size(lib); i++) {
+  for(int i=0; i<transform_library_size(lib); i++) {
     struct transform* T = get_transform(lib,i);
     free_transform(T);
   }
@@ -323,12 +342,12 @@ void free_library(struct library* lib) {
   free(lib);
 }
 
-int library_size(struct library* lib) {
+int transform_library_size(struct transform_library* lib) {
   assert(lib);
   return lib->len;
 }
 
-void resize_library(struct library* lib) {
+void resize_transform_library(struct transform_library* lib) {
   // double the capacity
   int new_cap = 2 * lib->cap;  
   struct transform** new_data = malloc(new_cap * sizeof(struct transform*));
@@ -343,7 +362,7 @@ void resize_library(struct library* lib) {
   lib->cap = new_cap;
 }
 
-void remove_transform(struct library* lib, int idx) {
+void remove_transform(struct transform_library* lib, int idx) {
   assert(lib);
   assert((idx < lib->len && idx >= 0) || idx == -1);
 
@@ -360,7 +379,7 @@ void remove_transform(struct library* lib, int idx) {
   lib->len--;
 }
 
-struct transform* get_transform(struct library* lib, int idx) {
+struct transform* get_transform(struct transform_library* lib, int idx) {
   assert(lib);
   assert((0 <= idx && idx < lib->len) || idx == -1);
 
@@ -371,23 +390,38 @@ struct transform* get_transform(struct library* lib, int idx) {
   return lib->data[idx];
 }
 
-struct transform* get_random_transform(struct library* lib) {
-  int r = rand() % library_size(lib);
+struct transform* get_random_transform(struct transform_library* lib) {
+  int r = rand() % transform_library_size(lib);
   struct transform* T = get_transform(lib,r);
   return T;
 }
 
-void append_transform(struct library* lib, struct transform* T) {
+void append_transform(struct transform_library* lib, struct transform* T) {
   assert(lib);
   int idx = lib->len;
 
   // resize if needed
   if (lib->len == lib->cap) {
-    resize_library(lib);
+    resize_transform_library(lib);
   }
 
   lib->data[idx] = T;
   lib->len++;
+}
+
+// combined library with both bb and bp transforms
+
+struct library* create_library() {
+  struct library* lib = malloc(sizeof(struct library));
+  lib->bb = NULL;
+  lib->bp = NULL;
+  return lib;
+}
+
+void free_library(struct library* lib) {
+  if(lib->bb) free_transform_library(lib->bb);
+  if(lib->bp) free_transform_library(lib->bp);
+  free(lib);
 }
 
 /**************************
@@ -486,110 +520,4 @@ struct transform* reverse_transform(struct transform* T) {
   free_vector(t_rev);
   free_matrix(R_inv);
   return T_rev;
-}
-
-/*****************************************************
- * processing biophysical data to compute transforms *
- *****************************************************/
-
-int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
-  struct atom* a1 = get_last_backbone_atom(n1);
-  struct atom* a2 = get_first_backbone_atom(n2);
-  if(a1 && a2) {
-    if((strcmp(atom_name(a1),"O3'") == 0)&&(strcmp(atom_name(a2),"P") == 0)) {
-      double* diff = subtract(atom_coord(a1),atom_coord(a2));
-      double d = norm(diff);
-      free_vector(diff);
-      if(d < 2) {
-	return 1;
-      }    
-    } else {
-      printf("Unexpected atoms found for nucs %d and %d: %s %s\n",nuc_num(n1),nuc_num(n2),atom_name(a1),atom_name(a2));
-      exit(1);
-    }
-  }
-  return 0;
-}
-
-struct library* build_backbone_transform_library(struct rna_data* RNA) {
-  assert(RNA);
-  if(get_model_count(RNA) == 0) {
-    printf("No models found for RNA.\n");
-    exit(1);
-  }
-  double d_sum = 0.0;
-  int d_tot = 0;
-  struct library* backbone_library = create_library();
-  for(int i=0; i<get_model_count(RNA); i++) {
-    struct rna_model* RNA_model = get_rna_model(RNA,i); 
-    struct chain* chain = get_first_chain(RNA_model);
-    while(chain) {
-      struct nuc* n1 = get_first_nuc(chain);
-      struct nuc* n2 = next_nuc(chain,n1);
-      while(before_end(chain,n2)) { // while n2 is not a sentinel & is a valid nt
-	if(valid_dinucleotide(n1,n2)) { // checks that no gap b/w n1 and n2
-	  struct frame* f1 = compute_frame(n1);
-	  struct frame* f2 = compute_frame(n2);
-	  struct transform* T = compute_transform(f1,f2);
-	  // for calculating the avg displacement
-	  double d = get_transform_displacement(T);
-	  d_sum += d;
-	  d_tot++;
-	  // store backbone in library
-	  append_transform(backbone_library,T);
-	  free_frame(f1); // free memory of each transform after use
-	  free_frame(f2);
-	}
-	n1 = n2;
-	n2 = next_nuc(chain,n1);	   
-      }
-      chain = next_chain(chain);
-    }
-  }
-  printf("Found %d dinucleotide pairs.\n",library_size(backbone_library));
-  printf("Avg backbone displacement: %.2f\n",d_sum/d_tot);
-  return backbone_library;
-}
-
-struct library* build_basepair_transform_library(struct rna_data* RNA, struct bp_array* bp_array) {
-  assert(RNA);
-  if(get_model_count(RNA) == 0) {
-    printf("No models found for RNA.\n");
-    exit(1);
-  }
-  double d_sum = 0.0;
-  int d_tot = 0;
-  struct library* basepair_library = create_library();
-  for(int i=0; i<get_model_count(RNA); i++) {      
-    struct rna_model* RNA_model = get_rna_model(RNA,i);
-    for(int j=0; j<get_bp_array_size(bp_array);j++) {
-      struct bp* bp = get_bp(bp_array,j);
-      char chain_id1 = get_bp_chain_id(bp,1);
-      char chain_id2 = get_bp_chain_id(bp,2);
-      //printf("checking chain: %c %c\n",chain_id1,chain_id2);
-      struct chain* chain1 = get_chain_by_id(RNA_model,chain_id1);
-      struct chain* chain2 = get_chain_by_id(RNA_model,chain_id2);
-      int pos1 = get_bp_pos(bp,1);
-      int pos2 = get_bp_pos(bp,2);
-      //printf("checking pos: %d %d\n",pos1,pos2);
-      struct nuc* n1 = get_nuc_by_idx(chain1,pos1);
-      struct nuc* n2 = get_nuc_by_idx(chain2,pos2);
-      //printf("basepair: %d %d\n",nuc_num(n1),nuc_num(n2));
-      if(n1 && n2) {
-	struct frame* f1 = compute_frame(n1);
-	struct frame* f2 = compute_frame(n2);
-	struct transform* T = compute_transform(f1,f2);
-	// for calculating the avg displacement
-	double d = get_transform_displacement(T);
-	d_sum += d;
-	d_tot++;      
-	append_transform(basepair_library,T);
-	free_frame(f1);
-	free_frame(f2);
-      }
-    }
-  }
-  printf("found %d base pairs.\n",library_size(basepair_library));
-  printf("Avg basepair displacement: %.2f\n",d_sum/d_tot);
-  return basepair_library;
 }

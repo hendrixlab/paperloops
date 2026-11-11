@@ -16,35 +16,95 @@
 #include "vectorfun.h"
 #include "rna_data.h"
 
-/* Primary RNA data structure */
-struct rna_data;
 
-/* Structure used to represent RNA molecule linked list */
-struct rna_model;
+/*
+ *  Data Structure Definitions 
+ *  includes nodes for linked lists describing:
+ *     -sequence of nucleotides (linked list of "nuc" nodes   
+ *     -collection of atoms. There are three linked lists of atoms:
+ *         -backbone atoms
+ *         -sugar atoms
+ *         -base atoms
+ */
 
-/* structure used to represent a single chain for a model */
-struct chain;
+struct rna_data {
+  struct rna_model** models;
+  int model_count;
+  int *model_locs;
+  char* input_file_name;
+};
+  
+struct rna_model {
+  // doubly linked list of RNA polymer chains
+  struct chain* first_chain;
+  struct chain* last_chain;
+  int chain_count;  
+};
 
-/* Structure used to represent the nucleotide node */
-struct nuc;
+struct chain {
+  struct nuc *sentinel; // circular doubly-linked list of nuclotides
+  int length;
+  char* seq;
+  struct chain *next; // next chain in the model
+  struct chain *prev; // previous chain in the model
+  char chain_id;
+  struct nuc **nuc_array; // array of nucleotides
+  int nuc_array_size;
+};
 
-/* Structure used to represent the atom node */
-struct atom;
+// nucleotide node
+struct nuc {
+  struct atom* backbone_first;
+  struct atom* backbone_last;
+  struct atom* sugar_first;
+  struct atom* sugar_last;
+  struct atom* base_first;
+  struct atom* base_last;
+  int num;
+  char* name;
+  int size;
+  double bbta[6]; // backbone torsion angles
+  double sta[5];  // sugar torsion angles 
+  struct nuc* next; // next nucleotide in the chain
+  struct nuc* prev; // prev nucleotide in the chain
+};
 
-// array of base pairs
-struct bp_array;
+// atom node
+struct atom {
+  char* name;
+  double* r;
+  int num;
+  char* type;
+  struct atom* next;
+  struct atom* prev;
+  struct atom* sugar_next; // pointers just for sugar ring
+  struct atom* sugar_prev;  
+};
+
+// base pair array
+struct bp_array {
+  struct bp** data;
+  int size;
+};
 
 // base pair
-struct bp;
+struct bp {
+  char chain_id1;
+  char chain_id2;
+  int pos1;
+  int pos2;
+};
+
 
 struct rna_data* create_rna_data(char* input_file_name);
 struct rna_model* create_model();
 struct chain* create_chain(char chain_id);
 struct nuc* create_nuc(int nuc_num, char* nuc_name);
 struct atom* create_atom(int atom_num, char* atom_name, double* r);
-void free_rna_model(struct rna_model* RNA_model);
-void free_nuc(struct nuc* n);
 void free_atom(struct atom* a);
+void free_nuc(struct nuc* n);
+void free_chain(struct chain* chain);
+void free_rna_data(struct rna_data* RNA_data);
 int model_is_empty(struct rna_model* RNA_model);
 int chain_is_empty(struct chain* RNA_chain);
 int nuc_backbone_is_empty(struct nuc* n);
@@ -58,6 +118,7 @@ int get_model_loc(struct rna_data* RNA, int model_num);
 void allocate_rna_models(struct rna_data* RNA);
 void set_rna_model(struct rna_data* RNA, int model_num, struct rna_model* RNA_model);
 struct rna_model* get_rna_model(struct rna_data* RNA, int model_num);
+void print_rna_model(struct rna_model* RNA_model);
 void set_model_chain_count(struct rna_model* RNA_model, int chain_count);
 int get_model_chain_count(struct rna_model* RNA_model);
 void allocate_model_chains(struct rna_model* RNA_model);
@@ -82,6 +143,7 @@ struct nuc* get_nuc_by_idx(struct chain* chain, int idx);
 int before_end(struct chain* RNA_chain, struct nuc* n);
 struct nuc* next_nuc(struct chain* RNA_chain, struct nuc* n);
 struct nuc* prev_nuc(struct chain* RNA_chain, struct nuc* n);
+void print_chain(struct chain* chain);
 struct atom* prev_nuc_last_backbone_atom(struct chain* RNA_chain, struct nuc* n);
 struct atom* next_nuc_first_backbone_atom(struct chain* RNA_chain, struct nuc* n);
 struct atom* get_first_backbone_atom(struct nuc* n);

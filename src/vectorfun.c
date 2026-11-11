@@ -103,9 +103,10 @@ double norm(double *v) {
 double* normalize(double *v) {
   assert(v);
   double* result = create_vector();
-  result[0] = v[0]/norm(v);
-  result[1] = v[1]/norm(v);
-  result[2] = v[2]/norm(v);  
+  double v_mag = norm(v);
+  result[0] = v[0]/v_mag;
+  result[1] = v[1]/v_mag;
+  result[2] = v[2]/v_mag;  
   return result;
 }
 
@@ -321,49 +322,60 @@ double* compute_euler_vector(double** R) {
 
 double* compute_euler_vector(double** R) {
   // compute the Euler vector from rotation matrix, i.e. to "Euler axis/angle"
-  // converts to quaternion first, based on: https://intra.engr.ucr.edu/~farrell/AidedNavigation/D_App_Quaternions/Rot2Quat.pdf
-  double* q = malloc(4*sizeof(double));
-  q[0] = 0.5*sqrt(1.0+R[0][0]-R[1][1]-R[2][2]); // q_i
-  q[1] = 0.5*sqrt(1.0-R[0][0]+R[1][1]-R[2][2]); // q_j
-  q[2] = 0.5*sqrt(1.0-R[0][0]-R[1][1]+R[2][2]); // q_k
-  q[3] = 0.5*sqrt(1.0+R[0][0]+R[1][1]+R[2][2]); // q_r the angle/real component
+  // converts to quaternion first, based: https://intra.engr.ucr.edu/~farrell/AidedNavigation/D_App_Quaternions/Rot2Quat.pdf
+
+  // compute values inside square roots first for safety:
+  double t0 = 1.0+R[0][0]-R[1][1]-R[2][2];
+  double t1 = 1.0-R[0][0]+R[1][1]-R[2][2];
+  double t2 = 1.0-R[0][0]-R[1][1]+R[2][2];
+  double t3 = 1.0+R[0][0]+R[1][1]+R[2][2];
+  
   // get the largest term to maximize numerical precision
   int max_index = 0;
-  for(int index=1; index<4; index++) {
-    if(q[max_index] < q[index]) {
-      max_index = index;
-    }
-  }
+  double max_val = t0;
+  if (t1 > max_val) { max_val = t1; max_index = 1; }
+  if (t2 > max_val) { max_val = t2; max_index = 2; }
+  if (t3 > max_val) { max_val = t3; max_index = 3; }
+
+  double* q = malloc(4*sizeof(double));
   // update other terms using the max denominator
   switch(max_index) {
   case 0:
+    q[0] = 0.5 * sqrt(t0);
     q[1] = (R[0][1] + R[1][0])/(4.0*q[0]);
     q[2] = (R[0][2] + R[2][0])/(4.0*q[0]);
     q[3] = (R[1][2] - R[2][1])/(4.0*q[0]);
+    break;
   case 1:
+    q[1] = 0.5 * sqrt(t1);
     q[0] = (R[0][1] + R[1][0])/(4.0*q[1]);
     q[2] = (R[1][2] + R[2][1])/(4.0*q[1]);
     q[3] = (R[2][0] - R[0][2])/(4.0*q[1]);
+    break;
   case 2:
+    q[2] = 0.5 * sqrt(t2);
     q[0] = (R[0][2] + R[2][0])/(4.0*q[2]);
     q[1] = (R[1][2] + R[2][1])/(4.0*q[2]);
     q[3] = (R[0][1] - R[1][0])/(4.0*q[2]);
+    break;
   case 3:
+    q[3] = 0.5 * sqrt(t3);
     q[0] = (R[1][2] - R[2][1])/(4.0*q[3]);
     q[1] = (R[2][0] - R[0][2])/(4.0*q[3]);
     q[2] = (R[0][1] - R[1][0])/(4.0*q[3]);
+    break;
   }
   // compute axis-angle representation from quaternions
   // based on: https://en.wikipedia.org/wiki/Quaternions_and_spatial_rotation
-  double norm = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2]);
-  double theta = 2.0*atan2(norm,q[3]);
+  double q_mag = sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2]);
+  double theta = 2.0 * atan2(q_mag,q[3]);
   double* axis = create_vector();
-  if(sin(theta/2.0) == 0.0) {
+  if(q_mag < 1e-9) {
     axis[0] = 1.0; // the other terms are 0.0 by default
   } else {
-    axis[0] = q[0]/sin(theta/2.0);
-    axis[1] = q[1]/sin(theta/2.0);
-    axis[2] = q[2]/sin(theta/2.0);
+    axis[0] = q[0] / q_mag;
+    axis[1] = q[1] / q_mag;
+    axis[2] = q[2] / q_mag;
   }
   //  printf("%f\t%f\t%f\t%f\n",axis[0],axis[1],axis[2],theta);
   double* EV = scale_vector(axis,theta);

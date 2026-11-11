@@ -1,0 +1,151 @@
+struct array* get_C_eff_samples_flat(struct flat_trace* fwd, struct flat_trace* rev, struct array* h_rev, int n_threads) {
+  int N = fwd->length;
+  struct array* C_eff_samples = create_array(N);
+  double* raw_output = C_eff_samples->data; 
+  
+  const double constant_denominator = (8.0 * M_PI * M_PI) * (6.022e23 / 1.0e27);
+
+  #pragma omp parallel for num_threads(n_threads) default(none) \
+      shared(N, fwd, rev, h_rev, raw_output, constant_denominator) \
+      schedule(dynamic, 16)
+  for(int i = 0; i < N; i++) {
+    // 1. Pass the pre-allocated flat memory straight into the math engine
+    double p = get_kde_probability_flat(i, fwd->data, rev->data, N, h_rev);
+    
+    // 2. Inline the norm computation directly using Row-Major math trick
+    double v = norm_flat(fwd->data, i); 
+    
+    double w = 1.0;
+    if(v != 0.0) {
+      double sin_v2 = sin(v / 2.0);
+      double v2 = v / 2.0;
+      w = (sin_v2 / v2) * (sin_v2 / v2);                                                                                                         
+    }
+    raw_output[i] = p / (w / constant_denominator);
+  }
+
+  return C_eff_samples;
+}
+
+
+double norm_flat(double* flat_data, int frame_idx) {
+    int offset = frame_idx * 6;
+    
+    // Assuming the Euler Vector coordinates are stored in the first 3 dimensions (0, 1, 2)
+    // Adjust indices 0, 1, 2 to match wherever the Euler vector sits inside your T6 data layout!
+    double x = flat_data[offset + 0];
+    double y = flat_data[offset + 1];
+    double z = flat_data[offset + 2];
+    
+    return sqrt(x*x + y*y + z*z);
+}
+
+
+// Pre-allocate the continuous structures once
+struct flat_trace flat_fwd;
+flat_fwd.length = 2000;
+flat_fwd.dimensions = 6;
+flat_fwd.data = (double*)malloc(2000 * 6 * sizeof(double));
+
+// Copy the data sequentially just ONCE
+for(int i = 0; i < flat_fwd.length; i++) {
+    struct frame* f = get_frame(pts_fwd, i);
+    for(int j = 0; j < flat_fwd.dimensions; j++) {
+        flat_fwd.data[i * 6 + j] = get_T6_value(f, j);
+    }
+}
+
+// ... Do the exact same thing to create a 'flat_rev' trace ...
+
+
+
+struct flat_trace {
+    double* data;       // The raw malloc'd array (N * dimensions)
+    int length;         // Number of frames (e.g., 2000)
+    int dimensions;     // Number of dimensions (e.g., 6)
+};
+
+
+double get_kde_probability_flat(int x_idx, double* x_flat, double* pts_flat, int n, struct array* bandwidth) {
+  int d = 6;
+  double det_bw = 1.0;
+  double bw_local[6];
+  
+  // Cache bandwidth to safe local thread registers
+  for(int j = 0; j < d; j++) {
+    bw_local[j] = array_get(bandwidth, j);
+    det_bw *= bw_local[j];
+  }
+
+  double sum = 0.0;
+  int x_offset = x_idx * d;
+
+  // This loop now runs entirely inside the ultra-fast L2 Cache of the core
+  for(int i = 0; i < n; i++) {
+    double product = 1.0;
+    int pts_offset = i * d;
+
+    for(int j = 0; j < d; j++) {
+      double x_val = x_flat[x_offset + j];
+      double f_val = pts_flat[pts_offset + j];
+      double z = (x_val - f_val) / bw_local[j];
+      product *= gaussian_kernel(z);
+    }
+    sum += product;
+  }
+  return (sum / det_bw) / (double)n;
+}
+
+
+#include <stdlib.h>
+#include <omp.h>
+
+struct array* get_C_eff_samples_optimized(struct trace* pts_fwd, struct trace* pts_rev, struct array* h_rev, int n_threads) {
+  int N = trace_length(pts_fwd);
+  int d = 6; // Dimensions
+
+  // 1. Allocate the flat arrays using standard malloc
+  double* flat_fwd = (double*)malloc(N * d * sizeof(double));
+  double* flat_rev = (double*)malloc(N * d * sizeof(double));
+
+  // 2. Sequential Copy: Convert scattered structures into continuous memory
+  // This step feels slow, but it takes less than a millisecond.
+  for(int i = 0; i < N; i++) {
+    struct frame* f_fwd = get_frame(pts_fwd, i);
+    struct frame* f_rev = get_frame(pts_rev, i);
+    for(int j = 0; j < d; j++) {
+      flat_fwd[i * d + j] = get_T6_value(f_fwd, j);
+      flat_rev[i * d + j] = get_T6_value(f_rev, j);
+    }
+  }
+
+  // 3. Set up the container for the output data
+  struct array* C_eff_samples = create_array(N);
+  double* raw_output = C_eff_samples->data; 
+  const double constant_denominator = (8.0 * M_PI * M_PI) * (6.022e23 / 1.0e27);
+
+  // 4. Parallel Loop: Highly optimized and free of memory bottlenecks
+  #pragma omp parallel for num_threads(n_threads) default(none) \
+      shared(N, flat_fwd, flat_rev, h_rev, raw_output, constant_denominator) \
+      schedule(dynamic, 16)
+  for(int i = 0; i < N; i++) {
+    // Call the optimized, non-pointer-chasing KDE function
+    double p = get_kde_probability_flat(i, flat_fwd, flat_rev, N, h_rev);
+    
+    // Inline the rest of your polymer math
+    double v = norm_flat(flat_fwd, i); // Custom flat version of your norm function
+    double w = 1.0;
+    if(v != 0.0) {
+      double sin_v2 = sin(v / 2.0);
+      double v2 = v / 2.0;
+      w = (sin_v2 / v2) * (sin_v2 / v2);                                                                                                         
+    }
+    raw_output[i] = p / (w / constant_denominator);
+  }
+
+  // 5. Clean up the temporary flat arrays
+  free(flat_fwd);
+  free(flat_rev);
+
+  return C_eff_samples;
+}

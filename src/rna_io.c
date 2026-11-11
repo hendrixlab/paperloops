@@ -8,23 +8,29 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include "motifs.h"
 #include "rna_io.h"
 #include "rna_data.h"
+#include "transform.h"
 
 #define MAX_LINE_LENGTH 1000
 
-/*******************
- * data structures *
- *******************/
-
-struct split_text {
-  char** term;
-  int cols;
-};
 
 /* FUNCTIONS */
+
+int is_numeric(char* string) {
+  char* ptr = string;
+  while(*ptr != '\0') {
+    if(!isdigit((unsigned char)*ptr)) {
+      return 0;
+      break;
+    }
+    ptr++;
+  }
+  return 1;
+}
 
 double* extract_coord(char* line) {
   // extract the substrings for x,y,z
@@ -71,16 +77,23 @@ int extract_nuc_num(char* line) {
 }
 
 char* extract_nuc_name(char* line) {
-  // should be pos 18-20 in 1-based
-  char* nuc_name = malloc(4*sizeof(char));
+  // should be pos 18-20 in 1-based (3 char + \0 gives 4)
+  char* nuc_name = malloc(4 * sizeof(char));
+  
   int count = 0;
-  for(int i=0;i<3;i++) {
-    if(line[17+i] != ' ') {
-      nuc_name[count++] = line[17+i];
+  for(int i=0; i<3; i++) {
+    char c = line[17 + i];
+    if(c != ' ' && c != '\0') {      
+      nuc_name[count++] = c;
     }
   }
   nuc_name[count] = '\0';
-  // NEED to map PSU to P and other HETATM nucleotides
+  
+  if(count == 0) {
+    strcpy(nuc_name,"N");
+  }
+  
+  // need to map PSU to U and other HETATM nucleotides
   return nuc_name;
 }
 
@@ -206,12 +219,15 @@ struct rna_data* read_pdb_file(char* input_file_name) {
 	int nuc_num = extract_nuc_num(line);
 	char* nuc_name = extract_nuc_name(line);
 	if(new_nuc_num(RNA_model,nuc_num)) {
+          // create a nucleotide
+          //printf("adding %s to %d\n",nuc_name,chain_length(get_last_chain(RNA_model)));
 	  struct nuc* n = create_nuc(nuc_num,nuc_name);
 	  add_nuc(RNA_model,n);	  
 	  //printf("Adding: %c %d %s\n",chain_id,nuc_num,nuc_name);
-	  //set_chain_sequence(get_last_chain(RNA_model));
 	  //printf("Current: %s\n",get_chain_sequence(get_last_chain(RNA_model)));
-	}
+	} else {
+          free(nuc_name);
+        }
 	int atom_num = extract_atom_num(line);
 	char* atom_name = extract_atom_name(line);
 	double* r = extract_coord(line);
@@ -225,7 +241,13 @@ struct rna_data* read_pdb_file(char* input_file_name) {
 	break; // end of model
       }
     }
-    // check number of chains.
+    struct chain* chain = get_first_chain(RNA_model);
+    int total_chains = 0;
+    while(chain) {
+      set_chain_sequence(chain);
+      total_chains++;
+      chain = next_chain(chain);      
+    }
     set_rna_model(RNA,model_num,RNA_model);    
   }
   // make an array copy of the linked list for faster access of base pairs
@@ -261,20 +283,19 @@ char* get_split_text_term(struct split_text* row, int i) {
   return row->term[i];
 }
 
-struct split_text* split_line(char *line, char *delim) {
+struct split_text* split_line(char *line, char *delim) { 
   struct split_text* row = create_split_text();
   int n = 0;
-  
   char *token = strtok(line, delim);
-  while( token != NULL ) {
+  while( token != NULL ) { 
     row->term = realloc(row->term, (n+1)*sizeof(char*));
-    row->term[n] = token; 
+    row->term[n] = token;
     token = strtok(NULL, delim);
-    n++;
+    n++; 
   }
   row->cols = n;
-  return row;
-}
+  return row; 
+} 
 
 int count_basepairs(FILE* F) {
   char line[MAX_LINE_LENGTH];
@@ -311,6 +332,8 @@ int count_stem_basepairs(FILE* F) {
 	int stem_start2 = atoi(range2->term[0]);
 	int stem_end2 = atoi(range2->term[1]);
 	int length2 = stem_end2 - stem_start2 + 1;
+        free_split_text(range1);
+        free_split_text(range2);
 	if(length1 == length2) {
 	  size += length1;
 	} else {
@@ -326,6 +349,8 @@ int count_stem_basepairs(FILE* F) {
 	int stem_start2 = atoi(range2->term[0]);
 	int stem_end2 = atoi(range2->term[1]);
 	int length2 = stem_end2 - stem_start2 + 1;
+        free_split_text(range1);
+        free_split_text(range2);
 	if(length1 == length2) {
 	  size += length1;
 	} else {
@@ -362,7 +387,7 @@ struct bp_array* read_basepair_file(char *basepair_file) {
   struct bp_array* bp_array = create_bp_array(size);
   fseek(F,0,0); // reset file
 
-  FILE* OUT = fopen("pl_basepairs.txt","w");
+  //FILE* OUT = fopen("pl_basepairs.txt","w");
   int count = 0;
   while(fgets(line,MAX_LINE_LENGTH,F)) {
     struct split_text* row = split_line(line," ");
@@ -376,7 +401,7 @@ struct bp_array* read_basepair_file(char *basepair_file) {
 	  set_bp(bp_array,count,bp);
 	} else if(bp1_info->cols == 3 && bp2_info->cols == 3) {
 	  // access first character/convert to char with ->term[0][0]
-	  fprintf(OUT,"%c %d %c %d\n",bp1_info->term[0][0],atoi(bp1_info->term[2]),bp2_info->term[0][0],atoi(bp2_info->term[2]));
+	  //fprintf(OUT,"%c %d %c %d\n",bp1_info->term[0][0],atoi(bp1_info->term[2]),bp2_info->term[0][0],atoi(bp2_info->term[2]));
 	  struct bp* bp = create_bp(bp1_info->term[0][0],bp2_info->term[0][0],atoi(bp1_info->term[2]),atoi(bp2_info->term[2]));
 	  set_bp(bp_array,count,bp);
 	} else {
@@ -390,7 +415,8 @@ struct bp_array* read_basepair_file(char *basepair_file) {
     free_split_text(row);
   }
   printf("reading basepair file complete.\n");
-  fclose(OUT);
+  //fclose(OUT);
+  fclose(F);
   return bp_array;
 }
 
@@ -424,6 +450,8 @@ struct bp_array* read_stems_file(char *stems_file) {
 	int stem_end1 = atoi(range1->term[1]);
 	int stem_start2 = atoi(range2->term[0]);
 	int stem_end2 = atoi(range2->term[1]);
+        free_split_text(range1);
+        free_split_text(range2);
 	for(int pos1 = stem_start1; pos1 <= stem_end1; pos1++) {
 	  int pos2 = stem_end2 - (pos1 - stem_start1);
 	  // for chain_id, convert from string to char with ->term[0][0] i.e. access first char
@@ -441,6 +469,8 @@ struct bp_array* read_stems_file(char *stems_file) {
 	int stem_end1 = atoi(range1->term[1]);
 	int stem_start2 = atoi(range2->term[0]);
 	int stem_end2 = atoi(range2->term[1]);
+        free_split_text(range1);
+        free_split_text(range2);
 	for(int pos1 = stem_start1; pos1 <= stem_end1; pos1++) {
 	  int pos2 = stem_end2 - (pos1 - stem_start1);
 	  // for chain_id, convert from string to char with ->term[0][0] i.e. access first char
@@ -465,6 +495,7 @@ struct bp_array* read_stems_file(char *stems_file) {
   }
   printf("reading basepair file complete.\n");
   fclose(OUT);
+  fclose(F);
   return bp_array;
 }
 
@@ -493,6 +524,69 @@ int read_max_motif_length(FILE* MOTIF_FILE) {
   return L_max;
 }
 
+struct motif* read_input_motif(char* input_motif) {
+  struct motif* motif;
+  if(input_motif[0] == '-') {
+    motif = create_motif(1);
+    char* substring = input_motif + 1;
+    if(is_numeric(substring)) {
+      set_motif_loop(motif,0,atoi(substring));
+    } else {
+      printf("Error: incorrect motif formatting: %s\n", input_motif);
+      exit(0);
+    }
+  } else {
+    struct split_text* row = split_line(input_motif,"-");
+    int n = row->cols;
+    if(n == 1) {
+      // if only one number, then n=0 (no helices)
+      motif = create_motif(0);
+      if(is_numeric(row->term[0])) {
+        set_motif_loop(motif,0,atoi(row->term[0]));
+      } else {
+        printf("Error: incorrect motif formatting: %s\n", input_motif);
+        exit(0);
+      }
+    } else {
+      // should be any number of loops/helices n
+      motif = create_motif(n);
+      for(int i=0; i<row->cols; i++) {  // motif has to be built with loop lengths
+        if(is_numeric(row->term[0])) {
+          set_motif_loop(motif,i,atoi(row->term[i]));
+        } else {
+          printf("Error: incorrect motif formatting: %s\n", input_motif);
+          exit(0);
+        }
+      }
+    }
+  }
+  int L = get_motif_sum(motif);
+  struct hash_table* motif_hash = create_hash_table(L); // not sure what size to use here
+  long int id = compute_motif_id(motif,L);
+  printf("staring id: %d\n",id);
+  set_motif_id(motif,id);
+  struct motif* curr_motif = motif;
+  hash_table_set(motif_hash,id,curr_motif); // each rotation and starting motif gets added to motif_hash
+
+  for(int j=0; j<motif->num; j++) { // apart from repeats, motif with n loops has at most n rotations
+    struct motif* prev_motif = curr_motif; // initially prev_motif has motif that was read in, but is updated
+    curr_motif = rotate_motif(curr_motif,L); 
+    long int id = get_motif_id(curr_motif);
+    printf("rotated id: %d\n",id);
+
+    if(id < 0) {
+      printf("ERROR in motif ID: %l\t%d\n",id,curr_motif->num);
+      exit(0);
+    }
+    if(hash_table_empty(motif_hash,id)) { // only add if it is not visited/stored yet
+      hash_table_set(motif_hash,id,curr_motif); // each rotation gets added to motif_hash
+      set_next_motif(prev_motif,curr_motif); // attach the rotation so motif_lib has all of them
+      printf("Attaching motif rotation %d: ",j);
+      print_motif(curr_motif,'\n');
+    }
+  }
+  return motif;
+}
 
 struct motif_group* read_motif_file(char* motif_file) {
   char line[MAX_LINE_LENGTH];
@@ -505,35 +599,227 @@ struct motif_group* read_motif_file(char* motif_file) {
 
   struct motif_group* motif_group = create_motif_group(1);
   int L_max = read_max_motif_length(MOTIF_FILE);
+  printf("Read in max motif length: %d\n",L_max);
   fseek(MOTIF_FILE,0,0); // reset file
   struct hash_table* motif_hash = create_hash_table(L_max); // not sure what size to use here
   
   while(fgets(line,MAX_LINE_LENGTH,MOTIF_FILE)) {
-    struct split_text* row = split_line(line,"-");
-    int n = row->cols;   // row->cols is n 
-    struct motif* motif = create_motif(n);
-    for(int i=0; i<row->cols; i++) {  // motif has to be built with loop lengths
-      set_motif_loop(motif,i,atoi(row->term[i]));
-    }
-    long int id = compute_motif_id(motif,L_max);
-    set_motif_id(motif,id);
-    hash_table_set(motif_hash,id,motif);
-    append_motif(motif_group,motif);
-    // motif added, now add all the rotations
-    for(int j=0; j<n; j++) { // apart from repeats, motif with n loops has at most n rotations
-      struct motif* prev_motif = motif; // initially prev_motif has motif that was read in, but is updated
-      motif = rotate_motif(motif,L_max); 
-      long int id = get_motif_id(motif);
-      if(id < 0) {
-	printf("ERROR: %l\t%d\n",id,n);
+    if(line[0] != '#') {
+      struct motif* motif;
+      if(line[0] == '-') {
+        motif = create_motif(1);
+        char* substring = line + 1;
+        if(is_numeric(substring)) {
+          set_motif_loop(motif,0,atoi(substring));
+        } else {
+          printf("Error: incorrect motif formatting: %s\n", line);
+          exit(0);
+        }
+      } else {
+        struct split_text* row = split_line(line,"-");
+        int n = row->cols;
+        if(n == 1) {
+          // if only one number, then n=0 (no helices)
+          motif = create_motif(0);
+          if(is_numeric(row->term[0])) {
+            set_motif_loop(motif,0,atoi(row->term[0]));
+          } else {
+            printf("Error: incorrect motif formatting: %s\n", line);
+            exit(0);
+          }
+        } else {
+          // should be any number of loops/helices n
+          motif = create_motif(n);
+          for(int i=0; i<row->cols; i++) {  // motif has to be built with loop lengths
+            if(is_numeric(row->term[0])) {
+              set_motif_loop(motif,i,atoi(row->term[i]));
+            } else {
+              printf("Error: incorrect motif formatting: %s\n", line);
+              exit(0);
+            }
+          }
+        }
       }
-      if(hash_table_empty(motif_hash,id)) { // only add if it is not visited/stored yet
-	hash_table_set(motif_hash,id,motif); // each rotation gets added to motif_hash
-	set_next_motif(prev_motif,motif); // attach the rotation so motif_lib has all of them
+      long int id = compute_motif_id(motif,L_max);
+      set_motif_id(motif,id);
+      hash_table_set(motif_hash,id,motif);
+      append_motif(motif_group,motif);
+      // motif added, now add all the rotations
+      for(int j=0; j<motif->num; j++) { // apart from repeats, motif with n loops has at most n rotations
+        struct motif* prev_motif = motif; // initially prev_motif has motif that was read in, but is updated
+        motif = rotate_motif(motif,L_max); 
+        long int id = get_motif_id(motif);
+        if(id < 0) {
+          printf("ERROR in motif ID: %l\t%d\n",id,motif->num);
+          exit(0);
+        }
+        if(hash_table_empty(motif_hash,id)) { // only add if it is not visited/stored yet
+          hash_table_set(motif_hash,id,motif); // each rotation gets added to motif_hash
+          set_next_motif(prev_motif,motif); // attach the rotation so motif_lib has all of them
+        }
       }
     }
   }
   free_hash_table(motif_hash);
   fclose(MOTIF_FILE);
   return motif_group;
+}
+
+
+/***********************************************************
+ * processing input biophysical data to compute transforms *
+ ***********************************************************/
+
+int valid_dinucleotide(struct nuc* n1, struct nuc* n2) {
+  struct atom* a1 = get_last_backbone_atom(n1);
+  struct atom* a2 = get_first_backbone_atom(n2);
+  if(a1 && a2) {
+    if((strcmp(atom_name(a1),"O3'") == 0)&&(strcmp(atom_name(a2),"P") == 0)) {
+      double* diff = subtract(atom_coord(a1),atom_coord(a2));
+      double d = norm(diff);
+      free_vector(diff);
+      if(d < 2) {
+	return 1;
+      }    
+    } else {
+      printf("Unexpected atoms found for nucs %d and %d: %s %s\n",nuc_num(n1),nuc_num(n2),atom_name(a1),atom_name(a2));
+      exit(1);
+    }
+  }
+  return 0;
+}
+
+struct transform_library* build_backbone_transform_library(struct rna_data* RNA) {
+  assert(RNA);
+  if(get_model_count(RNA) == 0) {
+    printf("No models found for RNA.\n");
+    exit(1);
+  }
+  double d_sum = 0.0;
+  int d_tot = 0;
+  struct transform_library* backbone_library = create_transform_library();
+  for(int i=0; i<get_model_count(RNA); i++) {
+    struct rna_model* RNA_model = get_rna_model(RNA,i); 
+    struct chain* chain = get_first_chain(RNA_model);
+    while(chain) {
+      struct nuc* n1 = get_first_nuc(chain);
+      struct nuc* n2 = next_nuc(chain,n1);
+      while(before_end(chain,n2)) { // while n2 is not a sentinel & is a valid nt
+	if(valid_dinucleotide(n1,n2)) { // checks that no gap b/w n1 and n2
+	  struct frame* f1 = compute_frame(n1);
+	  struct frame* f2 = compute_frame(n2);
+	  struct transform* T = compute_transform(f1,f2);
+	  // for calculating the avg displacement
+	  double d = get_transform_displacement(T);
+	  d_sum += d;
+	  d_tot++;
+	  // store backbone in transform_library
+	  append_transform(backbone_library,T);
+	  free_frame(f1); // free memory of each transform after use
+	  free_frame(f2);
+	}
+	n1 = n2;
+	n2 = next_nuc(chain,n1);	   
+      }
+      chain = next_chain(chain);
+    }
+  }
+  printf("Found %d dinucleotide pairs.\n",transform_library_size(backbone_library));
+  printf("Avg backbone displacement: %.2f\n",d_sum/d_tot);
+  return backbone_library;
+}
+
+struct transform_library* build_basepair_transform_library(struct rna_data* RNA, struct bp_array* bp_array) {
+  assert(RNA);
+  if(get_model_count(RNA) == 0) {
+    printf("No models found for RNA.\n");
+    exit(1);
+  }
+  double d_sum = 0.0;
+  int d_tot = 0;
+  struct transform_library* basepair_library = create_transform_library();
+  for(int i=0; i<get_model_count(RNA); i++) {      
+    struct rna_model* RNA_model = get_rna_model(RNA,i);
+    for(int j=0; j<get_bp_array_size(bp_array);j++) {
+      struct bp* bp = get_bp(bp_array,j);
+      char chain_id1 = get_bp_chain_id(bp,1);
+      char chain_id2 = get_bp_chain_id(bp,2);
+      //printf("checking chain: %c %c\n",chain_id1,chain_id2);
+      struct chain* chain1 = get_chain_by_id(RNA_model,chain_id1);
+      struct chain* chain2 = get_chain_by_id(RNA_model,chain_id2);
+      int pos1 = get_bp_pos(bp,1);
+      int pos2 = get_bp_pos(bp,2);
+      //printf("checking pos: %d %d\n",pos1,pos2);
+      struct nuc* n1 = get_nuc_by_idx(chain1,pos1);
+      struct nuc* n2 = get_nuc_by_idx(chain2,pos2);
+      //printf("basepair: %d %d\n",nuc_num(n1),nuc_num(n2));
+      if(n1 && n2) {
+	struct frame* f1 = compute_frame(n1);
+	struct frame* f2 = compute_frame(n2);
+	struct transform* T = compute_transform(f1,f2);
+	// for calculating the avg displacement
+	double d = get_transform_displacement(T);
+	d_sum += d;
+	d_tot++;      
+	append_transform(basepair_library,T);
+	free_frame(f1);
+	free_frame(f2);
+      }
+    }
+  }
+  printf("found %d base pairs.\n",transform_library_size(basepair_library));
+  printf("Avg basepair displacement: %.2f\n",d_sum/d_tot);
+  return basepair_library;
+}
+
+struct library* build_library(char* pdb_file, char* stems_file) {
+  // build combined library of bp and bb transforms
+  
+  printf("reading in PDB file: %s\n",pdb_file);
+  struct rna_data* RNA = read_pdb_file(pdb_file);
+
+  // building libraries
+  struct library* rna_lib = create_library();
+  printf("Building backbone libraries:\n");
+  rna_lib->bb = build_backbone_transform_library(RNA);
+  
+  printf("reading in stems file: %s\n",stems_file);
+  struct bp_array* basepairs = read_stems_file(stems_file);
+
+  printf("Building basepair libraries:\n");  
+  rna_lib->bp = build_basepair_transform_library(RNA,basepairs);
+
+  // memory clean-up
+  free_bp_array(basepairs); // maybe want to save for later? 
+  free_rna_data(RNA);
+  
+  return rna_lib;
+}
+
+/******************
+ * HELIX FUNCTION *
+ ******************/
+
+struct library* build_helix_library(char* helix_pdb_file) {
+  // build combined library of bp and bb transforms
+
+  struct library* helix_lib = create_library();
+
+  if(helix_pdb_file) {
+    struct rna_data* helix = read_pdb_file(helix_pdb_file);
+
+    // stems file:
+    char helix_stems_file[100];
+    strcpy(helix_stems_file,helix_pdb_file);
+    strcat(helix_stems_file,".stems.txt");
+    printf("reading in helix stems file: %s\n",helix_stems_file);
+    struct bp_array* helix_basepairs = read_stems_file(helix_stems_file);
+    
+    helix_lib->bb = build_backbone_transform_library(helix);
+    helix_lib->bp = build_basepair_transform_library(helix,helix_basepairs);
+
+    free_bp_array(helix_basepairs);
+    free_rna_data(helix);
+  }
+  return helix_lib;
 }

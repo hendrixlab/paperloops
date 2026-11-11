@@ -15,9 +15,14 @@
 #include "rna_io.h"
 #include "rna_data.h"
 
-/* DATA TYPES */
+/*******************
+ * data structures *
+ *******************/
 
-struct split_text;
+struct split_text {
+  char** term;
+  int cols;
+};
 
 /* FUNCTION PROTOTYPES */
 
@@ -49,7 +54,7 @@ int get_split_text_cols(struct split_text* row);
 
 char* get_split_text_term(struct split_text* row, int i);
 
-struct split_text*  split_line(char *line, char *delim);
+struct split_text* split_line(char *line, char *delim);
 
 int count_basepairs(FILE* F);
 
@@ -57,6 +62,22 @@ struct bp_array* read_basepair_file(char *stems_file);
 
 struct bp_array* read_stems_file(char *stems_file);
 
+struct motif* read_input_motif(char* input_motif);
+
 struct motif_group* read_motif_file(char* motif_file);
+
+/***********************************************************
+ * processing input biophysical data to compute transforms *
+ ***********************************************************/
+
+int valid_dinucleotide(struct nuc* n1, struct nuc* n2);
+
+struct transform_library* build_backbone_transform_library(struct rna_data* RNA);
+
+struct transform_library* build_basepair_transform_library(struct rna_data* RNA, struct bp_array* bp_array);
+
+struct library* build_library(char* pdb_file, char* stems_file);
+
+struct library* build_helix_library(char* helix_pdb_file);
 
 #endif

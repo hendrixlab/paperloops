@@ -13,85 +13,8 @@
 #include "vectorfun.h"
 #include "rna_data.h"
 
-/*
- *  Data Structure Definitions 
- *  includes nodes for linked lists describing:
- *     -sequence of nucleotides (linked list of "nuc" nodes   
- *     -collection of atoms. There are three linked lists of atoms:
- *         -backbone atoms
- *         -sugar atoms
- *         -base atoms
- */
-
-struct rna_data {
-  struct rna_model** models;
-  int model_count;
-  int *model_locs;
-  char* input_file_name;
-};
-  
-struct rna_model {
-  struct chain* first_chain;
-  struct chain* last_chain;
-  int chain_count;  
-};
-
-struct chain {
-  struct nuc *sentinel; // circulary doubly-linked list of nuclotides
-  int length;
-  char* seq;
-  struct chain *next;
-  struct chain *prev;
-  char chain_id;
-  struct nuc **nuc_array; // array of nucleotides
-  int nuc_array_size;
-};
-
-// nucleotide node
-struct nuc {
-  struct atom* backbone_first;
-  struct atom* backbone_last;
-  struct atom* sugar_first;
-  struct atom* sugar_last;
-  struct atom* base_first;
-  struct atom* base_last;
-  int num;
-  char* name;
-  int size;
-  double bbta[6]; // backbone torsion angles
-  double sta[5];  // sugar torsion angles 
-  struct nuc* next;
-  struct nuc* prev;
-};
-
-// atom node
-struct atom {
-  char* name;
-  double* r;
-  int num;
-  char* type;
-  struct atom* next;
-  struct atom* prev;
-  struct atom* sugar_next; // pointers just for sugar ring
-  struct atom* sugar_prev;  
-};
-
-// base pair array
-struct bp_array {
-  struct bp** data;
-  int size;
-};
-
-// base pair
-struct bp {
-  char chain_id1;
-  char chain_id2;
-  int pos1;
-  int pos2;
-};
-
 /* 
- * Node creation subroutines 
+ * data structure creation subroutines 
  */
 
 struct rna_data* create_rna_data(char* input_file_name) {
@@ -111,9 +34,10 @@ struct rna_model* create_model() {
 }
 
 struct chain* create_chain(char chain_id) {
+  // creates a doubly linked list with sentinels
   struct chain* chain = malloc(sizeof(struct chain));
   chain->chain_id = chain_id;
-  chain->sentinel = create_nuc(0,"sentinel");
+  chain->sentinel = create_nuc(0,NULL);
   chain->sentinel->next = chain->sentinel;
   chain->sentinel->prev = chain->sentinel;
   chain->length = 0;
@@ -132,9 +56,7 @@ struct nuc* create_nuc(int nuc_num, char* nuc_name) {
   n->base_first = NULL;
   n->base_last = NULL;
   n->num = nuc_num;
-  char* name_string = malloc(sizeof(char) * (strlen(nuc_name) + 1));
-  strcpy(name_string,nuc_name);
-  n->name = name_string;
+  n->name = nuc_name;
   n->size = 0;
   n->next = NULL;
   n->prev = NULL;
@@ -146,9 +68,7 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
   assert(a);
   a->num = atom_num; 
   a->r = r;
-  char* name_string = malloc(sizeof(char) * (strlen(atom_name) + 1));
-  strcpy(name_string,atom_name);
-  a->name = name_string;
+  a->name = atom_name;
   a->next = NULL;
   a->prev = NULL;
   a->sugar_next = NULL;
@@ -160,16 +80,11 @@ struct atom* create_atom(int atom_num, char* atom_name, double* r) {
  * Memory management/freeing subroutines 
  */
 
-void free_chain(struct chain* chain) {
-  assert(chain);
-  
-  while(!chain_is_empty(chain)) {
-    struct nuc* removed_nuc = get_first_nuc(chain);
-    chain->sentinel = removed_nuc->next;
-    removed_nuc->next->prev = chain->sentinel;
-    free_nuc(removed_nuc);
-  }
-  free(chain);
+void free_atom(struct atom* a) {
+  free(a->r);
+  free(a->name);
+  //free(a->type);
+  free(a);
 }
 
 void free_nuc(struct nuc* n) {
@@ -177,25 +92,67 @@ void free_nuc(struct nuc* n) {
   while(!nuc_backbone_is_empty(n)) {
     struct atom* removed_atom = n->backbone_first;
     n->backbone_first = removed_atom->next;
-    free_atom(removed_atom);
+    if(!is_sugar_atom(removed_atom)) {
+      //printf("removing backbone atom: %s\n",removed_atom->type);
+      free_atom(removed_atom);
+    }
   }
   while(!nuc_sugar_is_empty(n)) {
     struct atom* removed_atom = n->sugar_first;
-    n->sugar_first = removed_atom->next;
+    n->sugar_first = removed_atom->sugar_next;
+    //printf("removing sugar atom: %s\n",removed_atom->type);
     free_atom(removed_atom);
   }
   while(!nuc_base_is_empty(n)) {
     struct atom* removed_atom = n->base_first;
     n->base_first = removed_atom->next;
+    //printf("removing base atom: %s\n",removed_atom->type);
     free_atom(removed_atom);
-  }  
+  }
+  free(n->name);
   free(n);
 }
 
-void free_atom(struct atom* a) {
-  free(a->r);
-  free(a->name);
-  free(a);
+void free_chain(struct chain* chain) {
+  assert(chain);
+  
+  while(!chain_is_empty(chain)) {
+    //print_chain(chain);
+    struct nuc* removed_nuc = get_first_nuc(chain);
+    //printf("first nuc: %s, next nuc: %s\n",removed_nuc->name,removed_nuc->next->name);
+    chain->sentinel->next = removed_nuc->next;
+    removed_nuc->next->prev = chain->sentinel;
+    free_nuc(removed_nuc);
+    chain->length--;    
+    //printf("after removal, first nuc: %s, next nuc: %s\n",temp_nuc->name,temp_nuc->next->name);
+  }
+  free_nuc(chain->sentinel);
+  free(chain->nuc_array);
+  free(chain->seq);
+  free(chain);
+}
+
+void free_rna_data(struct rna_data* RNA) {
+  assert(RNA);
+  if(get_model_count(RNA) == 0) {
+    printf("No models found for RNA.\n");
+    exit(1);
+  }
+  for(int i=0; i<get_model_count(RNA); i++) {
+    struct rna_model* RNA_model = get_rna_model(RNA,i); 
+    struct chain* chain = get_first_chain(RNA_model);
+    while(chain) {
+      //print_rna_model(RNA_model);
+      struct chain* next = next_chain(chain);
+      free_chain(chain);
+      chain = next;
+    }
+    free(RNA_model);
+  }
+  free(RNA->input_file_name);
+  free(RNA->model_locs);
+  free(RNA->models);
+  free(RNA);
 }
 
 /*******************************
@@ -264,6 +221,16 @@ struct rna_model* get_rna_model(struct rna_data* RNA, int model_num) {
   return RNA->models[model_num];
 }
 
+void print_rna_model(struct rna_model* RNA_model) {
+  assert(RNA_model);
+  struct chain* chain =  RNA_model->first_chain;
+  while(chain) {
+    printf("-%c",chain->chain_id);
+    chain = next_chain(chain);
+  }
+  printf("\n");
+}
+
 int get_model_chain_count(struct rna_model* RNA_model) {
   return RNA_model->chain_count;
 }
@@ -280,8 +247,9 @@ void add_chain(struct rna_model* RNA_model, struct chain* new_chain) {
 }
 
 void add_nuc(struct rna_model* RNA_model, struct nuc* n) {
+  // oddly, sentinel->prev is the last nucleotide with circular DLL
   RNA_model->last_chain->sentinel->prev->next = n;
-  n->prev = RNA_model->last_chain->sentinel->prev; // oddly, ->prev is the last nucleotide with circular DLL
+  n->prev = RNA_model->last_chain->sentinel->prev;
   RNA_model->last_chain->sentinel->prev = n;
   n->next = RNA_model->last_chain->sentinel;
   RNA_model->last_chain->length++;
@@ -289,20 +257,16 @@ void add_nuc(struct rna_model* RNA_model, struct nuc* n) {
 
 void add_atom(struct rna_model* RNA_model, struct atom* a) {
   assert(RNA_model);
-  //printf("adding: %s\n",a->name);
   if(is_backbone_atom(a)) {
     // atom is part of backbone
-    //printf("adding to backbone\n");
     add_backbone_atom(RNA_model,a);
   }
   if(is_sugar_atom(a)) {
     // atom is part of sugar
-    //printf("adding to sugar\n");
     add_sugar_atom(RNA_model,a);
   }
   if((!is_backbone_atom(a))&&(!is_sugar_atom(a))) {
     //atom is part of the base
-    //printf("adding to base\n");
     add_base_atom(RNA_model,a);
   }
 }
@@ -532,6 +496,21 @@ struct nuc* prev_nuc(struct chain* chain, struct nuc* n) {
   assert(n);
   return n->prev;
 }
+
+void print_chain(struct chain* chain) {
+  assert(chain);
+  if(!chain_is_empty(chain)) {
+    struct nuc* n = get_first_nuc(chain);
+    int count = 1;
+    while(before_end(chain,n)) {
+      printf("-(%d,%s)",count,n->name);
+      n = next_nuc(chain,n);
+      count++;
+    }
+    printf("\n");
+  }
+}
+
 
 // returns a pointer to the previous backbone atom O3' relative to n
 struct atom* prev_nuc_last_backbone_atom(struct chain* chain, struct nuc* n) {
@@ -1182,8 +1161,8 @@ char* set_chain_sequence(struct chain* chain) {
   assert(chain);
   char* sequence; 
   if(chain->length != 0) {
-    sequence = malloc(sizeof(char) * chain->length);    
-    struct nuc* n = chain->sentinel->next;
+    sequence = malloc(sizeof(char) * (chain->length+1));
+    struct nuc* n = get_first_nuc(chain);
     strcpy(sequence,"");
     while(before_end(chain,n)) {
       strcat(sequence,n->name);

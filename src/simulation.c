@@ -1,3 +1,4 @@
+
 /*
  * This library contains the definitions of structures and functions for simulations and KDE
  * to perform basic statistics 
@@ -10,20 +11,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <omp.h>
 
+#include "simulation.h"
 #include "transform.h"
 #include "motifs.h"
 #include "vectorfun.h"
 #include "rna_data.h"
 #include "rna_io.h"
 
-// this is just a static array of doubles
-struct array {
-  double* data;
-  int size;
-};
-
-// this is creating static array
+// this is creating static array of doubles 
 struct array* create_array(int size) {
   struct array* array = malloc(sizeof(struct array));
   array->size = size;
@@ -31,6 +28,7 @@ struct array* create_array(int size) {
   return array;
 }
 
+// free the array of doubles 
 void free_array(struct array* array) {
   assert(array);
   free(array->data);
@@ -66,24 +64,26 @@ double array_get(struct array* array, int idx) {
  * basic statistics *
  ********************/
 
-double get_sample_mean(struct array* samples) {
+double get_mean(double val1, double val2) {
+  return (val1+val2)/2.0;
+}
+
+double get_sample_mean(double* samples, int N) {
   assert(samples);
   double sum = 0.0;
-  int N = array_size(samples);
   for(int i=0; i<N; i++) {
-    sum += array_get(samples,i);
+    sum += samples[i];
   }
   return sum / N;
 }
 
-double get_sample_std_dev(struct array* samples) {
+double get_sample_std_dev(double* samples, int N) {
   assert(samples);
   double sum = 0.0;
   double sum_squares = 0.0;
-  int N = array_size(samples);
   
   for(int i=0; i<N; i++) {
-     double sample = array_get(samples,i);
+    double sample = samples[i];
     sum += sample;
     sum_squares += sample*sample;
   }
@@ -108,490 +108,8 @@ struct array* get_samples_geometric_mean(struct array* samples1, struct array* s
     }
     return geometric_mean;
   } else {
-    printf("Lengths do not match!\n");
+    printf("Error: Lengths do not match in get_samples_geometric_mean\n");
     exit(0);
-  }
-}
-
-/***********************
- * sampling/simulation *
- ***********************/
-
-struct trace* get_random_forward_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib) {
-  assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);
-  int length = steptypes_length(steps);
-  struct trace* trace = create_trace(length+1); // structure to store the trace +1 for initial point stored at 0
-  struct frame* x = create_frame(1.0); // the initial point
-  set_frame(trace,0,x); // add the initial point
-
-  for(int i=1; i<=steptypes_length(steps); i++) {
-    char* step = steptypes_get(steps,i-1);
-    struct transform* T;
-    if(strcmp(step,"BB") == 0) {
-      T = get_random_transform(bb_lib);
-    } else if(strcmp(step,"BP") == 0) {
-      T = get_random_transform(bp_lib);
-    } else {
-      printf("Unknown step found: %s\n",step);
-      exit(1);
-    }
-    x = apply_transform(T,x);
-    set_frame(trace,i,x);
-  }
-  return trace;
-}
-
-struct trace* get_random_reverse_trace(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib) {
-  assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);
-  // input "steps" are reversed within this function, presumed input in forward direction
-  int length = steptypes_length(steps);
-  struct trace* trace = create_trace(length+1); // structure to store the trace
-  struct frame* x = create_frame(1.0); // the initial point
-  set_frame(trace,0,x); // add the initial point
-
-  for(int i=steptypes_length(steps)-1; i>=0; i--) {
-    char* step = steptypes_get(steps,i);
-    struct transform* T;
-    if(strcmp(step,"BB") == 0) {
-      T = get_random_transform(bb_lib);      
-    } else if(strcmp(step,"BP") == 0) {
-      T = get_random_transform(bp_lib);
-    } else {
-      printf("Unknown step found: %s\n",step);
-      exit(1);
-    }
-    // reverse each individual transform in reverse order
-    struct transform* Tr = reverse_transform(T);
-    x = apply_transform(Tr,x);
-    free_transform(Tr);
-    set_frame(trace,steptypes_length(steps)-i,x); // these are stored in reverse order so that connecting point is last (0,0,0) first
-  }
-  return trace;
-}
-
-struct trace* build_random_forward_helices(struct steptypes* steps, struct trace* trace, struct library* bb_lib, struct library* bp_lib) {
-  /*
-                 Tbp2     
-              f3  ->  f4
-              ^       |
-          Tf2 |  Tbp1 V
-              f1  ->  f2
-          Tf1 ^       | Tr
-              |       V
-      fi-1 -> fi  ->  fi+1 -> ...
-        T[i-1]   T[i]    T[i+1]
-  */
-  assert(steps);
-  assert(trace);
-  assert(bb_lib);
-  assert(bp_lib);
-  int Nbp = steptypes_bp_count(steps);
-  //struct trace* helix = create_trace(Nbp*4);
-  struct trace* helix = create_trace(Nbp*6);
-  Nbp = 0;
-  for(int i=0; i<steptypes_length(steps); i++) {
-    char* step = steptypes_get(steps,i);
-    if(strcmp(step,"BP") == 0) {
-      struct frame* f = get_frame(trace,i);
-      struct transform* Tf1 = get_random_transform(bb_lib);
-      struct frame* f1 = apply_transform(Tf1,f);
-      struct transform* Tbp1 = get_random_transform(bp_lib);
-      struct frame* f2 = apply_transform(Tbp1,f1);
-      struct transform* Tf2 = get_random_transform(bb_lib);
-      struct frame* f3 = apply_transform(Tf2,f1);
-      struct transform* Tbp2 = get_random_transform(bp_lib);
-      struct frame* f4 = apply_transform(Tbp2,f3);
-      struct frame* f12 = average_frames(f1,f2);
-      struct frame* f34 = average_frames(f3,f4);
-      set_frame(helix,6*Nbp,f1);
-      set_frame(helix,6*Nbp+1,f2);
-      set_frame(helix,6*Nbp+2,f12);
-      set_frame(helix,6*Nbp+3,f3);
-      set_frame(helix,6*Nbp+4,f4);
-      set_frame(helix,6*Nbp+5,f34);
-      Nbp++;
-    }
-  }
-  return helix;
-}
-
-struct trace* build_random_reverse_helices(struct steptypes* steps, struct trace* trace, struct library* bb_lib, struct library* bp_lib) {
-  /*
-                 Tbp2     
-              f4  <-  f3
-              |       ^
-          Tf2 V  Tbp1 |
-              f2  <-  f1
-          Tf1 |       ^ Tr
-              V       |
-      fi-1 <- fi  <-  fi+1 <- ...
-        T[i-1]   T[i]    T[i+1]
-  */
-  assert(steps);
-  assert(trace);
-  assert(bb_lib);
-  assert(bp_lib);
-  int Nbp = steptypes_bp_count(steps);
-  struct trace* helix = create_trace(Nbp*6);
-  Nbp = 0;
-  if(steptypes_length(steps)+1 != trace_length(trace)) {
-    printf("error in lengths in build_random_reverse_helices: %d vs %d\n",steptypes_length(steps),trace_length(trace));
-    exit(1);
-  }
-  for(int i=steptypes_length(steps)-1; i>=0; i--) {
-    char* step = steptypes_get(steps,i);
-    if(strcmp(step,"BP") == 0) {
-      struct frame* f = get_frame(trace,i-(steptypes_length(steps)-1)); // there should be 1 more in trace vs steps
-      struct transform* Tf1 = get_random_transform(bb_lib);
-      struct transform* Tr1 = reverse_transform(Tf1);
-      struct frame* f1 = apply_transform(Tr1,f);
-      free_transform(Tr1);
-      struct transform* Tbp1 = get_random_transform(bp_lib);
-      struct transform* Trbp1 = reverse_transform(Tbp1);
-      free_transform(Trbp1);
-      struct frame* f2 = apply_transform(Trbp1,f1);
-      struct transform* Tf2 = get_random_transform(bb_lib);
-      struct transform* Tr2 = reverse_transform(Tf2);
-      struct frame* f3 = apply_transform(Tr2,f2);
-      free_transform(Tr2);
-      struct transform* Tbp2 = get_random_transform(bp_lib);
-      struct transform* Trbp2 = reverse_transform(Tbp2);
-      struct frame* f4 = apply_transform(Trbp2,f3);
-      struct frame* f12 = average_frames(f1,f2);
-      struct frame* f34 = average_frames(f3,f4);
-      free_transform(Trbp2);
-      set_frame(helix,6*Nbp,f1);
-      set_frame(helix,6*Nbp+1,f2);
-      set_frame(helix,6*Nbp+2,f12);
-      set_frame(helix,6*Nbp+3,f3);
-      set_frame(helix,6*Nbp+4,f4);
-      set_frame(helix,6*Nbp+5,f34);
-      Nbp++;
-    }
-  }
-  return helix;
-}
-
-struct trace* build_ideal_forward_helices(struct steptypes* steps, struct trace* trace, struct library* helix_bb_lib, struct library* helix_bp_lib) {
-  /*
-                 Tbp2     
-              f3  ->  f4
-              ^       |
-          Tf2 |  Tbp1 V
-              f1  ->  f2
-          Tf1 ^       | Tr
-              |       V
-      fi-1 -> fi  ->  fi+1 -> ...
-        T[i-1]   T[i]    T[i+1]
-  */
-  assert(steps);
-  assert(trace);
-  assert(helix_bb_lib);
-  assert(helix_bp_lib);
-  int Nbp = steptypes_bp_count(steps);
-  struct trace* helix = create_trace(Nbp*6);
-  Nbp = 0;
-  for(int i=0; i<steptypes_length(steps); i++) {
-    char* step = steptypes_get(steps,i);
-    if(strcmp(step,"BP") == 0) {
-      struct frame* f = get_frame(trace,i);
-      struct frame* f_ = get_frame(trace,i+1);
-      struct transform* Tf1 = get_transform(helix_bb_lib,0);
-      struct frame* f1 = apply_transform(Tf1,f);
-      struct transform* Tr1 = reverse_transform(Tf1);
-      struct frame* f2 = apply_transform(Tr1,f_);
-      struct transform* Tf2 = get_transform(helix_bb_lib,1);
-      struct frame* f3 = apply_transform(Tf2,f1);
-      struct transform* Tr2 = reverse_transform(Tf2);
-      struct frame* f4 = apply_transform(Tr2,f2);
-      struct frame* f12 = average_frames(f1,f2);
-      struct frame* f34 = average_frames(f3,f4);
-      // memory clean-up
-      free_transform(Tr1);
-      free_transform(Tr2);
-      // add the helices
-      set_frame(helix,6*Nbp,f1);
-      set_frame(helix,6*Nbp+1,f2);
-      set_frame(helix,6*Nbp+2,f12); // pseudoatom
-      set_frame(helix,6*Nbp+3,f3);
-      set_frame(helix,6*Nbp+4,f4);
-      set_frame(helix,6*Nbp+5,f34); // pseudoatom
-      Nbp++;
-    }
-  }
-  return helix;
-}
-
-struct trace* build_ideal_reverse_helices(struct steptypes* steps, struct trace* trace, struct library* helix_bb_lib, struct library* helix_bp_lib) {
-  /*
-                 Tbp2     
-              f4  ->  f3
-          Tf2 ^       | Tr2
-              |  Tbp1 V
-              f2  ->  f1
-          Tf1 ^       | Tr1
-              |       V
-      fi-1 -> fi  ->  fi+1 -> ...
-        T[i-1]   T[i]    T[i+1]
-                  BP
-  */
-  assert(steps);
-  assert(trace);
-  assert(helix_bb_lib);
-  assert(helix_bp_lib);
-  int Nbp = steptypes_bp_count(steps);
-  struct trace* helix = create_trace(Nbp*6);
-  Nbp = 0;
-  if(steptypes_length(steps)+1 != trace_length(trace)) {
-    printf("error in lengths in build_random_reverse_helices: %d vs %d\n",steptypes_length(steps),trace_length(trace));
-    exit(1);
-  }
-  for(int i=steptypes_length(steps)-1; i>=0; i--) {
-    char* step = steptypes_get(steps,i);
-    if(strcmp(step,"BP") == 0) {
-      struct frame* f = get_frame(trace,steptypes_length(steps)-1-i); // there should be 1 more in trace vs steps
-      struct frame* f_ = get_frame(trace,steptypes_length(steps)-i);
-      struct transform* Tf1 = get_transform(helix_bb_lib,0);
-      struct transform* Tr1 = reverse_transform(Tf1);
-      struct frame* f1 = apply_transform(Tr1,f);
-      struct frame* f2 = apply_transform(Tf1,f_);
-      struct transform* Tf2 = get_transform(helix_bb_lib,1);
-      struct transform* Tr2 = reverse_transform(Tf2);
-      struct frame* f3 = apply_transform(Tr2,f1);
-      struct frame* f4 = apply_transform(Tf2,f2);
-      struct frame* f12 = average_frames(f1,f2);
-      struct frame* f34 = average_frames(f3,f4);
-      // memory clean-up
-      free_transform(Tr1);
-      free_transform(Tr2);
-      // add the helices
-      set_frame(helix,6*Nbp,f1);
-      set_frame(helix,6*Nbp+1,f2);
-      set_frame(helix,6*Nbp+2,f12);
-      set_frame(helix,6*Nbp+3,f3);
-      set_frame(helix,6*Nbp+4,f4);
-      set_frame(helix,6*Nbp+5,f34);
-      Nbp++;
-    }
-  }
-  return helix;
-}
-
-struct trace* get_pts_forward(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
-  assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);
-  struct trace* pts_fwd = create_trace(N_samples); // create the library to store the points
-  for(int i=0; i<N_samples; i++) {
-    struct trace* trace = get_random_forward_trace(steps,bb_lib,bp_lib);
-    struct frame* x_fwd = copy_frame(get_frame(trace,-1)); // get the last point in the trace
-    double* EV = compute_euler_vector(get_frame_orientation(x_fwd));
-    set_frame_euler_vector(x_fwd,EV);
-    free_vector(EV);
-    free_trace(trace);
-    set_frame(pts_fwd,i,x_fwd);
-  }
-  return pts_fwd;
-}
-
-struct trace* get_pts_reverse(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
-  assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);  
-  struct trace* pts_fwd = get_pts_forward(steps,bb_lib,bp_lib,N_samples);
-  struct trace* pts_rev = create_trace(N_samples);
-  for(int i=0; i<trace_length(pts_fwd); i++) {
-    struct frame* x_fwd = get_frame(pts_fwd,i); // T goes from start of steps to end for each replicate
-    struct frame* x_rev = reverse_frame(x_fwd); // reverse it to go from end to start
-    double* EV = compute_euler_vector(get_frame_orientation(x_rev));
-    set_frame_euler_vector(x_rev,EV);
-    free_vector(EV);
-    set_frame(pts_rev,i,x_rev);
-  }
-  free_trace(pts_fwd); // this should free the individual transforms in pts_fwd
-  return pts_rev;
-}
-
-struct trace* get_pts_reverse2(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
-  assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);
-  struct trace* pts_rev = create_trace(N_samples); // create the library to store the points
-  for(int i=0; i<N_samples; i++) {
-    struct trace* trace = get_random_reverse_trace(steps,bb_lib,bp_lib); // assumes steps fwd, will flip in the fnctn
-    struct frame* x_rev = copy_frame(get_frame(trace,-1)); // get the last point in the trace
-    double* EV = compute_euler_vector(get_frame_orientation(x_rev));
-    set_frame_euler_vector(x_rev,EV);
-    free_vector(EV);
-    free_trace(trace);
-    set_frame(pts_rev,i,x_rev);
-  }
-  return pts_rev;
-}
-
-struct trace* read_pts_file(char* pts_file) {
-  // read a set of points defined in a file. Used for debugging, not part of current workflow
-  int MAX_LINE_LENGTH = 1000;
-  FILE* F = fopen(pts_file,"r");
-  if(F == NULL) {
-    printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",pts_file);
-    exit(1);
-  }
-
-  struct trace* pts = create_trace(100);
-  char line[MAX_LINE_LENGTH];
-  int count = 0;
-  while(fgets(line,MAX_LINE_LENGTH,F)) {
-    struct split_text* row = split_line(line,"\t");
-    if(get_split_text_cols(row) == 7) {
-      if(strcmp(get_split_text_term(row,0),"idx") != 0) {
-	struct frame* f = create_frame(1.0);
-	double* ctr = create_vector();
-	set_vector_elements(ctr,atof(get_split_text_term(row,1)),atof(get_split_text_term(row,2)),atof(get_split_text_term(row,3)));
-	set_frame_center(f,ctr);
-	free_vector(ctr);	
-	double* EV = create_vector();
-	set_vector_elements(EV,atof(get_split_text_term(row,4)),atof(get_split_text_term(row,5)),atof(get_split_text_term(row,6)));
-	set_frame_euler_vector(f,EV);
-	free_vector(EV);
-	set_frame(pts,count,f);
-	count++;
-      }
-    }
-  }
-  return pts;
-}
-
-/*************
- * KDE tools *
- *************/
-
-struct array* get_kde_bandwidth(struct trace* pts) {
-  assert(pts);
-  // calculate bandwidth using Silverman's rule
-  int d = 6; // assuming 6D coordinates
-  int n = trace_length(pts); // number of points
-  
-  struct array* h = create_array(d);
-  double* std_dev = get_T6_std_dev(pts);
-  
-  for(int i=0; i<d; i++) {
-    // the h[i] terms correspond to diagonal terms sqrt(H[i,i]) of a bandwidth matrix
-    if(std_dev[i] == 0.0) {
-      printf("zero std-dev found %d\n",i);
-      exit(0);
-    }
-    array_set(h, i, pow(4.0/(n*(d+2)),1.0/(d+4)) * std_dev[i] );
-  }  
-  free(std_dev);
-  return h;
-}
-
-double gaussian_kernel(double x) {
-  return exp(-0.5*x*x)/sqrt(2.0*pi);
-}
-
-double get_circ_prob(struct frame* x_fwd, struct frame* x_rev, struct array* bandwidth) {
-  assert(x_fwd);
-  assert(x_rev);
-  
-  int d = 6;
-  double product = 1.0;
-  for(int d=0; d<6; d++) {
-    double fwd_val = get_T6_value(x_fwd,d);
-    double rev_val = get_T6_value(x_rev,d);
-    double h = array_get(bandwidth,d);
-    double z = (fwd_val - rev_val)/h;
-    product *= gaussian_kernel(z);
-  }
-  double det_bw = 1.0;
-  for(int j=0; j<d; j++) {
-    det_bw *= array_get(bandwidth,j);
-  }
-  product /= det_bw;
-  return product;
-}
-
-double get_kde_probability(struct frame* x, struct trace* pts, struct array* bandwidth) {
-  // evaluate the probability f(x) of point x using the data in pts
-  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
-  // using standard multivariate normal kernels
-  assert(x);
-  assert(pts);
-  assert(bandwidth);
-  int d = 6;
-  int n = trace_length(pts);
-  
-  // bandwidth is an array, terms of diagonal H matrix
-  // determinant is the product of the diagonal terms
-  double det_bw = 1.0;
-  for(int j=0; j<d; j++) {
-    det_bw *= array_get(bandwidth,j);
-  }
-
-  double sum = 0.0;
-  for(int i=0; i<n; i++) {
-    double product = 1.0;
-    struct frame* f = get_frame(pts,i);
-    for(int j=0; j<d; j++) {
-      double x_val = get_T6_value(x,j);
-      double f_val = get_T6_value(f,j);
-      double h = array_get(bandwidth,j);
-      double z = (x_val - f_val)/h;
-      product *= gaussian_kernel(z);
-    }    
-    sum += product;
-  }
-  sum /= det_bw;
-  return sum/(double)n;
-}
-
-double get_kde_probability_sa(struct frame* x, struct trace* pts, struct array* bandwidth, int* clear) {
-  // sa = self-avoiding case: some colliding examples are excluded using clear
-  // evaluate the probability f(x) of point x using the data in pts
-  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
-  // using standard multivariate normal kernels
-  assert(x);
-  assert(pts);
-  assert(bandwidth);
-  assert(clear);
-
-  int d = 6;
-  int n = 0;
-  int N_samples = trace_length(pts);
-  
-  // bandwidth is an array, terms of diagonal H matrix
-  // determinant is the product of the diagonal terms
-  double det_bw = 1.0;
-  for(int j=0; j<d; j++) {
-    det_bw *= array_get(bandwidth,j);
-  }
-
-  double sum = 0.0;
-  for(int i=0; i<N_samples; i++) {
-    if(clear[i]) {
-      double product = 1.0;
-      struct frame* f = get_frame(pts,i);
-      for(int j=0; j<d; j++) {
-	double x_val = get_T6_value(x,j);
-	double f_val = get_T6_value(f,j);
-	double h = array_get(bandwidth,j);
-	double z = (x_val - f_val)/h;
-	product *= gaussian_kernel(z);
-      }    
-      sum += product;
-      n++; // should be the total number of self-avoiding pts
-    }
-  }
-  sum /= det_bw;
-  if(n == 0) {
-    return -1.0;
-  } else {
-    return sum/(double)n;
   }
 }
 
@@ -599,20 +117,48 @@ double get_kde_probability_sa(struct frame* x, struct trace* pts, struct array* 
  ** Collision Detection **
  *************************/
 
-struct monomer {
-  double* r;
-  int num;
-  struct monomer* next;
-};
+struct matrix* initialize_matrix(int rows, int cols) {
+  struct matrix* M = malloc(sizeof(struct matrix));
+  M->data = malloc(rows * cols * sizeof(int));
+  M->rows = rows;
+  M->cols = cols;
+  M->transposed = 0;
+  for(int i=0; i<rows*cols; i++) {
+    M->data[i] = 1;
+  }
+  return M;
+}
 
-struct detector {
-  struct monomer****  patch;
-  int* bins;    // number of bins in each dimension
-  int count;
-  double* min;  // min positions in each dimension
-  double* max;  // max position in each dimension
-  double bin_size;
-};
+void delete_matrix(struct matrix* M) {
+  free(M->data);
+  free(M);
+}
+
+int get_element(struct matrix* M, int i, int j) {
+  if(M->transposed) {
+    return M->data[(j * M->cols) + i];
+  }
+  return M->data[(i * M->cols) + j];
+}
+
+void set_element(struct matrix* M, int i, int j, int val) {
+  if(M->transposed) {
+    M->data[(j * M->cols) + i] = val;
+  } else {
+    M->data[(i * M->cols) + j] = val;
+  }
+}
+
+void transpose_matrix(struct matrix* M) {
+  if(M->transposed) {
+    M->transposed = 0;
+  }
+  M->transposed = 1;
+}
+
+/***********************************
+ * Monomers, collisions, detectors *
+ ***********************************/
 
 struct monomer* create_monomer(double* x, int num) {
   struct monomer* monomer = malloc(sizeof(struct monomer));
@@ -633,12 +179,8 @@ struct detector* create_detector(struct trace* trace, double bin_size) {
 
   detector->count = 0;
   detector->bin_size = bin_size;
-  double* min = create_vector();
-  min[0] = min[1] = min[2] = 1000000000.0;
-  double* max = create_vector();
-  max[0] = max[1] = max[2] = -1000000000.0;
-  get_trace_min_bounds(trace,min);
-  get_trace_max_bounds(trace,max);
+  double* min = get_trace_min_bounds(trace,NULL);
+  double* max = get_trace_max_bounds(trace,NULL);
   detector->min = min;
   detector->max = max;
 
@@ -661,21 +203,17 @@ struct detector* create_detector(struct trace* trace, double bin_size) {
   return detector;
 }
 
-struct detector* create_detector_with_helices(struct trace* trace, struct trace* helices, double bin_size) {
+struct detector* create_detector_with_helix(struct trace* trace, struct trace* helix, double bin_size) {
   assert(trace);
   assert(trace);
   struct detector* detector = malloc(sizeof(struct detector));
 
   detector->count = 0;
   detector->bin_size = bin_size;
-  double* min = create_vector();
-  min[0] = min[1] = min[2] = 1000000000.0;
-  double* max = create_vector();
-  max[0] = max[1] = max[2] = -1000000000.0;
-  get_trace_min_bounds(trace,min); // define the bounds to include both trace and helices
-  get_trace_max_bounds(trace,max);
-  get_trace_min_bounds(helices,min);
-  get_trace_max_bounds(helices,max);
+  double* min = get_trace_min_bounds(trace,NULL); // define the bounds to include both trace and helix
+  double* max = get_trace_max_bounds(trace,NULL);
+  min = get_trace_min_bounds(helix,min);
+  max = get_trace_max_bounds(helix,max);
   detector->min = min;
   detector->max = max;
 
@@ -758,6 +296,22 @@ int check_index(struct detector* detector, int* idx) {
 
 // detector building
 
+struct detector* build_detector(struct trace* trace, double bin_size) {
+  assert(trace);
+  struct detector* detector = create_detector(trace,bin_size);
+  add_trace_to_detector(detector,trace);
+  return detector;
+}
+
+struct detector* build_detector_with_helix(struct trace* trace, struct trace* helix, double bin_size) {
+  assert(trace);
+  assert(helix);
+  struct detector* detector = create_detector_with_helix(trace,helix,bin_size);
+  add_trace_to_detector(detector,trace);
+  add_trace_to_detector(detector,helix);  
+  return detector;
+}
+
 void add_monomer_to_detector(struct detector* detector, struct monomer* new_mon) {
   assert(detector);
   assert(new_mon);
@@ -788,22 +342,6 @@ void add_trace_to_detector(struct detector* detector, struct trace* trace) {
     struct monomer* m = create_monomer(x,count+i);
     add_monomer_to_detector(detector,m);
   }
-}
-
-struct detector* build_detector(struct trace* trace, double bin_size) {
-  assert(trace);
-  struct detector* detector = create_detector(trace,bin_size);
-  add_trace_to_detector(detector,trace);
-  return detector;
-}
-
-struct detector* build_detector_with_helices(struct trace* trace, struct trace* helices, double bin_size) {
-  assert(trace);
-  assert(helices);
-  struct detector* detector = create_detector_with_helices(trace,helices,bin_size);
-  add_trace_to_detector(detector,trace);
-  add_trace_to_detector(detector,helices);  
-  return detector;
 }
 
 // actual collisions:
@@ -884,12 +422,12 @@ int self_monomer_collision(struct detector* detector, struct monomer* mon_a, dou
 }
 
 int self_collision(struct detector* detector, struct trace* trace, int offset, double d_min) {
-  // offset shifts the ID of the incoming monomer if helices and loops use same numbering system
+  // offset shifts the ID of the incoming monomer if helix and loops use same numbering system
   assert(detector);
   assert(trace);  
   // It is assumed that detector was built with the same trace 
   // functionally a boolean -- does this trace have a collision with itself?
-  // int offset is the shift to the monomer IDs, used for helices
+  // int offset is the shift to the monomer IDs, used for helix
   for(int i=0; i<trace_length(trace); i++) {
     struct frame* f = get_frame(trace,i);
     double* x = get_frame_center(f);
@@ -903,6 +441,15 @@ int self_collision(struct detector* detector, struct trace* trace, int offset, d
     }
   }
   return 0;
+}
+
+int self_collision_helix(struct detector* detector, struct trace* trace, struct trace* helix, double d_min) {
+  if(self_collision(detector,trace,0,d_min)) {
+    return 1;
+  } else if(self_collision(detector,helix,trace_length(trace),d_min)) {
+    return 1;
+  }
+  return 0;  
 }
 
 int trace_collision(struct detector* detector, struct trace* trace, double d_min) {
@@ -919,6 +466,15 @@ int trace_collision(struct detector* detector, struct trace* trace, double d_min
     } else {
       free_monomer(m);
     }
+  }
+  return 0;  
+}
+
+int trace_collision_helix(struct detector* detector, struct trace* trace, struct trace* helix, double d_min) {
+  if(trace_collision(detector,trace,d_min)) {
+    return 1;
+  } else if(trace_collision(detector,helix,d_min)) {
+    return 1;
   }
   return 0;  
 }
@@ -959,6 +515,648 @@ double get_closest_approach(struct detector* detector, struct monomer* mon_a) {
   return d_min;
 }
 
+/***********************
+ * sampling/simulation *
+ ***********************/
+
+struct trace* get_random_forward_trace(struct steptypes* steps, struct library* rna_lib) {
+  assert(steps);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  int length = steptypes_length(steps);
+  struct trace* trace = create_trace(length+1); // structure to store the trace +1 for initial point stored at 0
+  struct frame* x = create_frame(1.0); // the initial point
+  set_frame(trace,0,x); // add the initial point
+
+  for(int i=1; i<=steptypes_length(steps); i++) {
+    char* step = steptypes_get(steps,i-1);
+    struct transform* T;
+    if(strcmp(step,"BB") == 0) {
+      T = get_random_transform(rna_lib->bb);
+    } else if(strcmp(step,"BP") == 0) {
+      T = get_random_transform(rna_lib->bp);
+    } else {
+      printf("Unknown step found: %s\n",step);
+      exit(1);
+    }
+    x = apply_transform(T,x);
+    set_frame(trace,i,x);
+  }
+  return trace;
+}
+
+struct trace* get_random_reverse_trace(struct steptypes* steps, struct library* rna_lib) {
+  assert(steps);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  // input "steps" are reversed within this function, presumed input in forward direction
+  int length = steptypes_length(steps);
+  struct trace* trace = create_trace(length+1); // structure to store the trace
+  struct frame* x = create_frame(1.0); // the initial point
+  set_frame(trace,0,x); // add the initial point
+
+  for(int i=steptypes_length(steps)-1; i>=0; i--) {
+    char* step = steptypes_get(steps,i);
+    struct transform* T;
+    if(strcmp(step,"BB") == 0) {
+      T = get_random_transform(rna_lib->bb);
+    } else if(strcmp(step,"BP") == 0) {
+      T = get_random_transform(rna_lib->bp);
+    } else {
+      printf("Unknown step found: %s\n",step);
+      exit(1);
+    }
+    // reverse each individual transform in reverse order
+    struct transform* Tr = reverse_transform(T);
+    x = apply_transform(Tr,x);
+    free_transform(Tr);
+    set_frame(trace,steptypes_length(steps)-i,x); // these are stored in reverse order so that connecting point is last (0,0,0) first
+  }
+  return trace;
+}
+
+struct trace* build_random_forward_helix(struct steptypes* steps, struct trace* trace, struct library* rna_lib) {
+  /*
+                 Tbp2     
+              f3  ->  f4
+              ^       |
+          Tf2 |  Tbp1 V
+              f1  ->  f2
+          Tf1 ^       | Tr
+              |       V
+      fi-1 -> fi  ->  fi+1 -> ...
+        T[i-1]   T[i]    T[i+1]
+  */
+  assert(steps);
+  assert(trace);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  int Nbp = steptypes_bp_count(steps);
+  //struct trace* helix = create_trace(Nbp*4);
+  struct trace* helix = create_trace(Nbp*6);
+  Nbp = 0;
+  for(int i=0; i<steptypes_length(steps); i++) {
+    char* step = steptypes_get(steps,i);
+    if(strcmp(step,"BP") == 0) {
+      struct frame* f = get_frame(trace,i);
+      struct transform* Tf1 = get_random_transform(rna_lib->bb);
+      struct frame* f1 = apply_transform(Tf1,f);
+      struct transform* Tbp1 = get_random_transform(rna_lib->bp);
+      struct frame* f2 = apply_transform(Tbp1,f1);
+      struct transform* Tf2 = get_random_transform(rna_lib->bb);
+      struct frame* f3 = apply_transform(Tf2,f1);
+      struct transform* Tbp2 = get_random_transform(rna_lib->bp);
+      struct frame* f4 = apply_transform(Tbp2,f3);
+      struct frame* f12 = average_frames(f1,f2);
+      struct frame* f34 = average_frames(f3,f4);
+      set_frame(helix,6*Nbp,f1);
+      set_frame(helix,6*Nbp+1,f2);
+      set_frame(helix,6*Nbp+2,f12);
+      set_frame(helix,6*Nbp+3,f3);
+      set_frame(helix,6*Nbp+4,f4);
+      set_frame(helix,6*Nbp+5,f34);
+      Nbp++;
+    }
+  }
+  return helix;
+}
+
+struct trace* build_random_reverse_helix(struct steptypes* steps, struct trace* trace, struct library* rna_lib) {
+  /*
+                 Tbp2     
+              f4  <-  f3
+              |       ^
+          Tf2 V  Tbp1 |
+              f2  <-  f1
+          Tf1 |       ^ Tr
+              V       |
+      fi-1 <- fi  <-  fi+1 <- ...
+        T[i-1]   T[i]    T[i+1]
+  */
+  assert(steps);
+  assert(trace);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  int Nbp = steptypes_bp_count(steps);
+  struct trace* helix = create_trace(Nbp*6);
+  Nbp = 0;
+  if(steptypes_length(steps)+1 != trace_length(trace)) {
+    printf("error in lengths in build_random_reverse_helix: %d vs %d\n",steptypes_length(steps),trace_length(trace));
+    exit(1);
+  }
+  for(int i=steptypes_length(steps)-1; i>=0; i--) {
+    char* step = steptypes_get(steps,i);
+    if(strcmp(step,"BP") == 0) {
+      struct frame* f = get_frame(trace,i-(steptypes_length(steps)-1)); // there should be 1 more in trace vs steps
+      struct transform* Tf1 = get_random_transform(rna_lib->bb);
+      struct transform* Tr1 = reverse_transform(Tf1);
+      struct frame* f1 = apply_transform(Tr1,f);
+      free_transform(Tr1);
+      struct transform* Tbp1 = get_random_transform(rna_lib->bp);
+      struct transform* Trbp1 = reverse_transform(Tbp1);
+      free_transform(Trbp1);
+      struct frame* f2 = apply_transform(Trbp1,f1);
+      struct transform* Tf2 = get_random_transform(rna_lib->bb);
+      struct transform* Tr2 = reverse_transform(Tf2);
+      struct frame* f3 = apply_transform(Tr2,f2);
+      free_transform(Tr2);
+      struct transform* Tbp2 = get_random_transform(rna_lib->bp);
+      struct transform* Trbp2 = reverse_transform(Tbp2);
+      struct frame* f4 = apply_transform(Trbp2,f3);
+      struct frame* f12 = average_frames(f1,f2);
+      struct frame* f34 = average_frames(f3,f4);
+      free_transform(Trbp2);
+      set_frame(helix,6*Nbp,f1);
+      set_frame(helix,6*Nbp+1,f2);
+      set_frame(helix,6*Nbp+2,f12);
+      set_frame(helix,6*Nbp+3,f3);
+      set_frame(helix,6*Nbp+4,f4);
+      set_frame(helix,6*Nbp+5,f34);
+      Nbp++;
+    }
+  }
+  return helix;
+}
+
+struct trace* build_ideal_forward_helix(struct steptypes* steps, struct trace* trace, struct library* helix_lib) {
+  /*
+                 Tbp2     
+              f3  ->  f4
+              ^       |
+          Tf2 |  Tbp1 V
+              f1  ->  f2
+          Tf1 ^       | Tr
+              |       V
+      fi-1 -> fi  ->  fi+1 -> ...
+        T[i-1]   T[i]    T[i+1]
+  */
+  assert(steps);
+  assert(trace);
+  assert(helix_lib);
+  assert(helix_lib->bb);
+  assert(helix_lib->bp);
+  int Nbp = steptypes_bp_count(steps);
+  struct trace* helix = create_trace(Nbp*6);
+  Nbp = 0;
+  for(int i=0; i<steptypes_length(steps); i++) {
+    char* step = steptypes_get(steps,i);
+    if(strcmp(step,"BP") == 0) {
+      struct frame* f = get_frame(trace,i);
+      struct frame* f_ = get_frame(trace,i+1);
+      struct transform* Tf1 = get_transform(helix_lib->bb,0);
+      struct frame* f1 = apply_transform(Tf1,f);
+      struct transform* Tr1 = reverse_transform(Tf1);
+      struct frame* f2 = apply_transform(Tr1,f_);
+      struct transform* Tf2 = get_transform(helix_lib->bb,1);
+      struct frame* f3 = apply_transform(Tf2,f1);
+      struct transform* Tr2 = reverse_transform(Tf2);
+      struct frame* f4 = apply_transform(Tr2,f2);
+      struct frame* f12 = average_frames(f1,f2);
+      struct frame* f34 = average_frames(f3,f4);
+      // memory clean-up
+      free_transform(Tr1);
+      free_transform(Tr2);
+      // add the helix
+      set_frame(helix,6*Nbp,f1);
+      set_frame(helix,6*Nbp+1,f2);
+      set_frame(helix,6*Nbp+2,f12); // pseudoatom
+      set_frame(helix,6*Nbp+3,f3);
+      set_frame(helix,6*Nbp+4,f4);
+      set_frame(helix,6*Nbp+5,f34); // pseudoatom
+      Nbp++;
+    }
+  }
+  return helix;
+}
+
+struct trace* build_ideal_reverse_helix(struct steptypes* steps, struct trace* trace, struct library* helix_lib) {
+  /*
+                 Tbp2     
+              f4  ->  f3
+          Tf2 ^       | Tr2
+              |  Tbp1 V
+              f2  ->  f1
+          Tf1 ^       | Tr1
+              |       V
+      fi-1 -> fi  ->  fi+1 -> ...
+        T[i-1]   T[i]    T[i+1]
+                  BP
+  */
+  assert(steps);
+  assert(trace);
+  assert(helix_lib);
+  assert(helix_lib->bb);
+  assert(helix_lib->bp);
+  int Nbp = steptypes_bp_count(steps);
+  struct trace* helix = create_trace(Nbp*6);
+  Nbp = 0;
+  if(steptypes_length(steps)+1 != trace_length(trace)) {
+    printf("error in lengths in build_ideal_reverse_helix: %d vs %d\n",steptypes_length(steps),trace_length(trace));
+    exit(1);
+  }
+  for(int i=steptypes_length(steps)-1; i>=0; i--) {
+    char* step = steptypes_get(steps,i);
+    if(strcmp(step,"BP") == 0) {
+      struct frame* f = get_frame(trace,steptypes_length(steps)-1-i); // there should be 1 more in trace vs steps
+      struct frame* f_ = get_frame(trace,steptypes_length(steps)-i);
+      struct transform* Tf1 = get_transform(helix_lib->bb,0);
+      struct transform* Tr1 = reverse_transform(Tf1);
+      struct frame* f1 = apply_transform(Tr1,f);
+      struct frame* f2 = apply_transform(Tf1,f_);
+      struct transform* Tf2 = get_transform(helix_lib->bb,1);
+      struct transform* Tr2 = reverse_transform(Tf2);
+      struct frame* f3 = apply_transform(Tr2,f1);
+      struct frame* f4 = apply_transform(Tf2,f2);
+      struct frame* f12 = average_frames(f1,f2);
+      struct frame* f34 = average_frames(f3,f4);
+      // memory clean-up
+      free_transform(Tr1);
+      free_transform(Tr2);
+      // add the helix
+      set_frame(helix,6*Nbp,f1);
+      set_frame(helix,6*Nbp+1,f2);
+      set_frame(helix,6*Nbp+2,f12);
+      set_frame(helix,6*Nbp+3,f3);
+      set_frame(helix,6*Nbp+4,f4);
+      set_frame(helix,6*Nbp+5,f34);
+      Nbp++;
+    }
+  }
+  return helix;
+}
+
+struct trace* build_forward_helix(struct steptypes* fwd_steps, struct trace* fwd_trace, struct library* rna_lib, struct library* helix_lib) {
+  // wrapper function depending on whether ideal helix is read in
+  if(helix_lib->bp) {
+    return build_ideal_forward_helix(fwd_steps,fwd_trace,helix_lib);
+  } else {
+    return build_random_forward_helix(fwd_steps,fwd_trace,rna_lib);
+  }
+}
+
+struct trace* build_reverse_helix(struct steptypes* rev_steps, struct trace* rev_trace, struct library* rna_lib, struct library* helix_lib) {
+  // wrapper function depending on whether idea helix is read in
+  if(helix_lib->bp) {
+    return build_ideal_reverse_helix(rev_steps,rev_trace,helix_lib);
+  } else {
+    return build_random_reverse_helix(rev_steps,rev_trace,rna_lib);
+  }
+}
+
+struct trace* get_pts_forward(struct steptypes* steps, struct library* rna_lib, int N_samples) {
+  assert(steps);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  struct trace* pts_fwd = create_trace(N_samples); // create the library to store the points
+  for(int i=0; i<N_samples; i++) {
+    struct trace* trace = get_random_forward_trace(steps,rna_lib);
+    struct frame* x_fwd = copy_frame(get_frame(trace,-1)); // get the last point in the trace
+    add_frame_euler_vector(x_fwd);
+    set_frame(pts_fwd,i,x_fwd);
+    free_trace(trace);
+  }
+  return pts_fwd;
+}
+
+struct trace* get_pts_reverse(struct steptypes* steps, struct library* rna_lib, int N_samples) {
+  assert(steps);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  struct trace* pts_fwd = get_pts_forward(steps,rna_lib,N_samples); // temporary forward trace to be reversed
+  struct trace* pts_rev = create_trace(N_samples); // data structure to store reverse trace
+  for(int i=0; i<trace_length(pts_fwd); i++) {
+    struct frame* x_fwd = get_frame(pts_fwd,i); // T goes from start of steps to end for each replicate
+    struct frame* x_rev = reverse_frame(x_fwd); // reverse it to go from end to start
+    add_frame_euler_vector(x_rev);
+    set_frame(pts_rev,i,x_rev);
+  }
+  free_trace(pts_fwd); // this should free the individual transforms in pts_fwd
+  return pts_rev;
+}
+
+struct trace* get_pts_reverse2(struct steptypes* steps, struct library* rna_lib, int N_samples) {
+  // alternative approach, not currently used
+  assert(steps);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
+  struct trace* pts_rev = create_trace(N_samples); // create the library to store the points
+  for(int i=0; i<N_samples; i++) {
+    struct trace* trace = get_random_reverse_trace(steps,rna_lib); // assumes steps fwd, will flip in the fnctn
+    struct frame* x_rev = copy_frame(get_frame(trace,-1)); // get the last point in the trace
+    add_frame_euler_vector(x_rev);
+    set_frame(pts_rev,i,x_rev);
+    free_trace(trace);
+  }
+  return pts_rev;
+}
+
+struct trace* read_pts_files(char* pts_file) {
+  // read a set of points defined in a file. Used for debugging, not part of current workflow
+  int MAX_LINE_LENGTH = 1000;
+  FILE* F = fopen(pts_file,"r");
+  if(F == NULL) {
+    printf("Error opening the file:\"%s\".\n Check permissions/file name.\n",pts_file);
+    exit(1);
+  }
+
+  struct trace* pts = create_trace(100);
+  char line[MAX_LINE_LENGTH];
+  int count = 0;
+  while(fgets(line,MAX_LINE_LENGTH,F)) {
+    struct split_text* row = split_line(line,"\t");
+    if(get_split_text_cols(row) == 7) {
+      if(strcmp(get_split_text_term(row,0),"idx") != 0) {
+	struct frame* f = create_frame(1.0);
+	double* ctr = create_vector();
+	set_vector_elements(ctr,atof(get_split_text_term(row,1)),atof(get_split_text_term(row,2)),atof(get_split_text_term(row,3)));
+	set_frame_center(f,ctr);
+	free_vector(ctr);	
+	double* EV = create_vector();
+	set_vector_elements(EV,atof(get_split_text_term(row,4)),atof(get_split_text_term(row,5)),atof(get_split_text_term(row,6)));
+	set_frame_euler_vector(f,EV);
+	free_vector(EV);
+	set_frame(pts,count,f);
+	count++;
+      }
+    }
+  }
+  return pts;
+}
+
+/*************
+ * KDE tools *
+ *************/
+
+struct array* get_kde_bandwidth(struct trace* pts) {
+  assert(pts);
+  // calculate bandwidth using Silverman's rule
+  int d = 6; // assuming 6D coordinates
+  int n = trace_length(pts); // number of points
+  
+  struct array* h = create_array(d);
+  double* std_dev = get_T6_std_dev(pts);
+  
+  for(int i=0; i<d; i++) {
+    // the h[i] terms correspond to diagonal terms sqrt(H[i,i]) of a bandwidth matrix
+    if(std_dev[i] == 0.0) {
+      printf("zero std-dev found %d\n",i);
+      exit(0);
+    }
+    array_set(h, i, pow(4.0/(n*(d+2)),1.0/(d+4)) * std_dev[i] );
+  }  
+  free(std_dev);
+  return h;
+}
+
+double* get_T6_std_dev_flat(struct array* pts, int N, double* std_dev) {
+  // calculate bandwidth using Silverman's rule
+  int d = 6; // assuming 6D coordinates
+  double sum[d];
+  double sum_squares[d];
+  
+  for(int j=0; j<d; j++) {
+    sum[j] = 0.0;
+    sum_squares[j] = 0.0;
+  }
+  for(int i=0; i<N; i++) {
+    for(int j=0; j<d; j++) {
+      double val = pts->data[i*6 + j];
+      sum[j] += val;
+      sum_squares[j] += val*val;	
+    }
+  } 
+  for(int j=0; j<d; j++) {
+    std_dev[j] = sqrt((sum_squares[j] - sum[j]*sum[j]/N)/(N-1));
+  }
+}
+
+struct array* get_kde_bandwidth_flat(struct array* pts, int N, double* h) {
+  assert(pts);
+  // calculate bandwidth using Silverman's rule
+  int d = 6; // assuming 6D coordinates
+  
+  double std_dev[d];
+  get_T6_std_dev_flat(pts,N,std_dev);
+  //printf("std dev: %f %f %f\n",std_dev[0],std_dev[1],std_dev[3]);
+  
+  for(int i=0; i<d; i++) {
+    // the h[i] terms correspond to diagonal terms sqrt(H[i,i]) of a bandwidth matrix
+    if(std_dev[i] == 0.0) {
+      printf("zero std-dev found %d\n",i);
+      exit(0);
+    }
+    h[i] = pow(4.0/(N*(d+2)),1.0/(d+4)) * std_dev[i];
+  }  
+}
+
+double gaussian_kernel(double x) {
+  return exp(-0.5*x*x)/sqrt(2.0*pi);
+}
+
+double get_circ_prob(struct frame* x_fwd, struct frame* x_rev, struct array* bandwidth) {
+  assert(x_fwd);
+  assert(x_rev);
+  
+  int d = 6;
+  double product = 1.0;
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    double fwd_val = get_T6_value(x_fwd,j);
+    double rev_val = get_T6_value(x_rev,j);
+    double h = array_get(bandwidth,j);
+    double z = (fwd_val - rev_val)/h;
+    det_bw *= h;
+    product *= gaussian_kernel(z);
+  }
+  product /= det_bw;
+  return product;
+}
+
+double get_circ_prob_flat(struct array* pts1, int idx1, struct array* pts2, int idx2, double* bandwidth) {
+  assert(pts1);
+  assert(pts2);
+  assert(bandwidth);
+  
+  int d=6;
+  int offset1 = idx1 * d;
+  int offset2 = idx2 * d;
+  double product = 1.0;
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    double x_val = pts1->data[offset1 + j];
+    double f_val = pts2->data[offset2 + j];
+    double z = (x_val - f_val)/bandwidth[j];
+    product *= gaussian_kernel(z);
+    det_bw *= bandwidth[j];
+  }
+  product /= det_bw;
+  return product;
+}
+
+double get_kde_probability(struct frame* x, struct trace* pts, struct array* bandwidth) {
+  // evaluate the probability f(x) of point x using the data in pts
+  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
+  // using standard multivariate normal kernels
+  assert(x);
+  assert(pts);
+  assert(bandwidth);
+  int d = 6;
+  int n = trace_length(pts);
+  
+  // bandwidth is an array, terms of diagonal H matrix
+  // determinant is the product of the diagonal terms
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    det_bw *= array_get(bandwidth,j);
+  }
+
+  double sum = 0.0;
+  for(int i=0; i<n; i++) {
+    double product = 1.0;
+    struct frame* f = get_frame(pts,i);
+    for(int j=0; j<d; j++) {
+      double x_val = get_T6_value(x,j);
+      double f_val = get_T6_value(f,j);
+      double h = array_get(bandwidth,j);
+      double z = (x_val - f_val)/h;
+      product *= gaussian_kernel(z);
+    }    
+    sum += product;
+  }
+  sum /= det_bw;
+  return sum/(double)n;
+}
+
+double get_kde_probability_flat(int idx, struct array* pts1, struct array* pts2, double* bandwidth, int N2) {
+  // evaluate the probability f(x) of point x using the data in pts
+  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
+  // using standard multivariate normal kernels
+  assert(pts1);
+  assert(pts2);
+  assert(bandwidth);
+  int d = 6;
+  
+  // bandwidth is an array, terms of diagonal H matrix
+  // determinant is the product of the diagonal terms
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    det_bw *= bandwidth[j];
+  }
+
+  double sum = 0.0;
+  int offset1 = idx * d;
+  for(int i=0; i<N2; i++) {    
+    double product = 1.0;
+    int offset2 = i * d;
+    for(int j=0; j<d; j++) {
+      double x_val = pts1->data[offset1 + j];
+      double f_val = pts2->data[offset2 + j];
+      double z = (x_val - f_val)/bandwidth[j];
+      product *= gaussian_kernel(z);
+    }    
+    sum += product;
+  }
+  sum /= det_bw;
+  return sum/(double)N2;
+}
+
+double get_kde_probability_sap(struct frame* x, struct trace* pts, struct array* bandwidth, struct matrix* M, int k) {
+  // sap = self-avoiding polymer: some colliding examples are excluded using M
+  // evaluate the probability f(x) of point x using the data in pts
+  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
+  // using standard multivariate normal kernels
+  // input int k can either b row or column of input frame, matrix transpose attribute tells which
+  assert(x);
+  assert(pts);
+  assert(bandwidth);
+  assert(M);
+
+  int d = 6;
+  int n = 0;
+  int N_samples = trace_length(pts);
+  
+  // bandwidth is an array, terms of diagonal H matrix
+  // determinant is the product of the diagonal terms
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    det_bw *= array_get(bandwidth,j);
+  }
+
+  double sum = 0.0;
+  for(int i=0; i<N_samples; i++) {
+    if(get_element(M,k,i)) {
+      double product = 1.0;
+      struct frame* f = get_frame(pts,i);
+      for(int j=0; j<d; j++) {
+	double x_val = get_T6_value(x,j);
+	double f_val = get_T6_value(f,j);
+	double h = array_get(bandwidth,j);
+	double z = (x_val - f_val)/h;
+	product *= gaussian_kernel(z);
+      }    
+      sum += product;
+      n++; // should be the total number of self-avoiding pts
+    }
+  }
+  sum /= det_bw;
+  if(n == 0) {
+    return -1.0;
+  } else {
+    return sum/(double)n;
+  }
+}
+
+double get_kde_probability_sap_flat(int idx, struct array* pts1, struct array* pts2, double* bandwidth, struct matrix* M, int N2) {
+  // sap = self-avoiding polymer: some colliding examples are excluded using M
+  // evaluate the probability f(x) of point x using the data in pts
+  // essentially follows https://en.wikipedia.org/wiki/Multivariate_kernel_density_estimation
+  // using standard multivariate normal kernels
+  // input int k can either b row or column of input frame, matrix transpose attribute tells which
+  assert(pts1);
+  assert(pts2);
+  assert(bandwidth);
+  assert(M);
+  int d = 6;
+
+  // bandwidth is an array, terms of diagonal H matrix
+  // determinant is the product of the diagonal terms
+  double det_bw = 1.0;
+  for(int j=0; j<d; j++) {
+    det_bw *= bandwidth[j];
+  }
+
+  int n = 0;
+  double sum = 0.0;
+  int offset1 = idx * d;
+  for(int i=0; i<N2; i++) {
+    if(get_element(M,idx,i)) {
+      double product = 1.0;
+      int offset2 = i * d;
+      for(int j=0; j<d; j++) {
+	double x_val = pts1->data[offset1 + j];
+	double f_val = pts2->data[offset2 + j];
+	double z = (x_val - f_val)/bandwidth[j];
+	product *= gaussian_kernel(z);
+      }
+      sum += product;
+      n++; // should be the total number of self-avoiding pts
+    }
+  }
+  sum /= det_bw;
+  if(n == 0) {
+    return -1.0;
+  } else {
+    return sum/(double)n;
+  }
+}
+
 double get_rna_closest_approach(struct rna_data* RNA, double bin_size) {  
   // for each RNA chain, compute the closest monomer-monomer distnace
   double d_min = 100000000.0;
@@ -990,7 +1188,7 @@ double get_rna_closest_approach(struct rna_data* RNA, double bin_size) {
 	//printf("monomer %d: %.3f %.3f %.3f\n",i,m->r[0],m->r[1],m->r[2]);
 	add_monomer_to_detector(detector,m);
       }
-      printf("completed detector. Now checking monomers\n");
+      printf("completed detector. Now computing closest approach.\n");
       // print closest approach distances. must be less than bin_size
       char* output_file = "closest_approach.txt";
       FILE* CLOSEST = fopen(output_file,"w");
@@ -1020,100 +1218,275 @@ double get_rna_closest_approach(struct rna_data* RNA, double bin_size) {
  * Effective Concentration C_eff * 
  *********************************/
 
-struct array* get_C_eff_samples(struct trace* pts_rev, struct trace* pts_fwd, struct array* h_fwd) {
-  assert(pts_rev);
+double norm_euler_flat(int idx, struct array* pts) {
+  int offset = idx*6;
+  double theta1 = pts->data[offset + 3];
+  double theta2 = pts->data[offset + 4];
+  double theta3 = pts->data[offset + 5];
+  return sqrt(theta1*theta1 + theta2*theta2 + theta3*theta3);
+}
+
+double get_frame_dist_sq_flat(struct array* pts_fwd, int i, struct array* pts_rev, int j) {
+  double sum = 0.0;
+  for(int k=0; k<3; k++) {
+    sum += (pts_fwd->data[i*6 + k] - pts_rev->data[j*6 + k])*(pts_fwd->data[i*6 + k] - pts_rev->data[j*6 + k]);
+  }
+  return sum;
+}
+
+double get_frame_angle_sq_flat(struct array* pts_fwd, int i, struct array* pts_rev, int j) {
+  double sum = 0.0;
+  for(int k=3; k<6; k++) {
+    sum += (pts_fwd->data[i*6 + k] - pts_rev->data[j*6 + k])*(pts_fwd->data[i*6 + k] - pts_rev->data[j*6 + k]);
+  }
+  return sum;
+}
+
+double get_frame_angle_sq_quat(struct array* pts_fwd, int i, struct array* pts_rev, int j) {
+  double sum = 0.0;
+  double q1[4];
+  double q2[4];
+  double theta1 = norm_euler_flat(i,pts_fwd);
+  if(theta1 < 1e-9) {
+    q1[0] = 1.0; q1[1] = 0.0; q1[2] = 0.0; q1[3] = 0.0;
+  } else {
+    double half_theta = theta1/2.0;
+    double s = sin(half_theta);
+    double scale = s / theta1;
+    q1[0] = cos(half_theta);
+    q1[1] = pts_fwd->data[i*6 + 3] * scale;
+    q1[2] = pts_fwd->data[i*6 + 4] * scale;
+    q1[3] = pts_fwd->data[i*6 + 5] * scale;
+  }
+  double theta2 = norm_euler_flat(j,pts_rev);
+  if(theta2 < 1e-9) {
+    q2[0] = 1.0; q2[1] = 0.0; q2[2] = 0.0; q2[3] = 0.0;
+  } else {
+    double half_theta = theta2/2.0;
+    double s = sin(half_theta);
+    double scale = s / theta2;
+    q2[0] = cos(half_theta);
+    q2[1] = pts_rev->data[i*6 + 3] * scale;
+    q2[2] = pts_rev->data[i*6 + 4] * scale;
+    q2[3] = pts_rev->data[i*6 + 5] * scale;
+  }
+  double dot = q1[0]*q2[0] + q1[1]*q2[1] + q1[2]*q2[2] + q1[3]*q2[3];
+  if(dot > 1.0) dot = 1.0;
+  if(dot < -1.0) dot = -1.0;
+  double angle = 2.0 * acos(fabs(dot));
+  return angle*angle;
+}
+
+
+double get_avg_dist_sq(struct array* pts_fwd, struct array* pts_rev, int N) {
   assert(pts_fwd);
-  assert(h_fwd);
+  assert(pts_rev);
   
-  int N = trace_length(pts_rev);
-  struct array* C_eff_samples = create_array(N);
-
+  int sample_count = 0;
+  double sum = 0.0;
   for(int i=0; i<N; i++) {
-    struct frame* x = get_frame(pts_rev,i);
+    for(int j=0; j<N; j++) {
+      double dist_sq = get_frame_dist_sq_flat(pts_fwd,i,pts_rev,j);
+      sum += dist_sq;
+      sample_count++;
+    }
+  }
 
-    double p = get_kde_probability(x, pts_fwd, h_fwd);
-    //double* EV = get_euler_vector(x);
-    double v = norm(get_frame_euler_vector(x));
+  // check that data is non-zero
+  if(sample_count == 0) {
+    printf("Error. No values in C_eff_samples.\n");
+    exit(1);
+  }
+
+  return sum / sample_count;
+}
+
+double get_avg_dist_sq_sap(struct array* pts_fwd, struct array* pts_rev, struct matrix* M, int N1, int N2) {
+  assert(pts_fwd);
+  assert(pts_rev);
+  assert(M);
+  
+  int sample_count = 0;
+  double sum = 0.0;
+  for(int i=0; i<N1; i++) {
+    for(int j=0; j<N2; j++) {
+      if(get_element(M,i,j)) {      
+        double dist_sq = get_frame_dist_sq_flat(pts_fwd,i,pts_rev,j);
+        sum += dist_sq;
+        sample_count++;
+      }
+    }
+  }
+
+  // check that data is non-zero
+  if(sample_count == 0) {
+    printf("Error. No values in C_eff_samples.\n");
+    exit(1);
+  }
+
+  return sum / sample_count;
+}
+
+double get_avg_angle_sq(struct array* pts_fwd, struct array* pts_rev, int N) {
+  assert(pts_fwd);
+  assert(pts_rev);  
+  
+  int sample_count = 0;
+  double sum = 0.0;
+  for(int i=0; i<N; i++) {
+    for(int j=0; j<N; j++) {
+      double angle_sq = get_frame_angle_sq_quat(pts_fwd,i,pts_fwd,j);
+      sum += angle_sq;
+      sample_count++;
+    }
+  }
+  
+  // check that data is non-zero
+  if(sample_count == 0) {
+    printf("Error. No values in C_eff_samples.\n");
+    exit(1);
+  }
+  
+  return sum / sample_count;
+}
+
+double get_avg_angle_sq_sap(struct array* pts_fwd, struct array* pts_rev, struct matrix* M, int N1, int N2) {
+  assert(pts_fwd);
+  assert(pts_rev);
+  assert(M);
+  
+  int sample_count = 0;
+  double sum = 0.0;
+  for(int i=0; i<N1; i++) {
+    for(int j=0; j<N2; j++) {
+      if(get_element(M,i,j)) {
+        double angle_sq = get_frame_angle_sq_quat(pts_fwd,i,pts_fwd,j);
+        sum += angle_sq;
+        sample_count++;
+      }
+    }
+  }
+
+  // check that data is non-zero
+  if(sample_count == 0) {
+    printf("Error. No values in C_eff_samples.\n");
+    exit(1);
+  }
+  
+  return sum / sample_count;
+}
+
+void get_C_eff_samples(struct array* pts_fwd, struct array* pts_rev, double* h_rev, int N_samples, double* C_eff_samples) {
+  assert(pts_fwd);
+  assert(pts_rev);
+  assert(h_rev);
+  assert(C_eff_samples);
+  
+  // pre-calculate multiplier
+  const double constant_mult = (8.0 * pi * pi) * (1.0e27 / 6.022e23);
+  
+  for(int i=0; i<N_samples; i++) {
+    double p = get_kde_probability_flat(i, pts_fwd, pts_rev, h_rev, N_samples);
+    //printf("%d\t%.3e\n",i,p);
+    double v = norm_euler_flat(i, pts_fwd);
     double w = 1.0;
     if(v != 0.0) {
       double sqrt_w = sin(v/2)/(v/2);
       w = sqrt_w*sqrt_w; // more efficient than pow()
     }
-    double C_eff = p/(w/(8.0*pi*pi))/(6.022e23/1.0e27);
-    double den = (w/(8.0*pi*pi))/(6.022e23/1.0e27);
-    array_set(C_eff_samples,i,C_eff);
+    double C_eff = (p / w) * constant_mult;
+    C_eff_samples[i] = C_eff;
   }
-  return C_eff_samples;
 }
 
-struct array* get_C_eff_samples_sa(struct trace* pts_rev, struct trace* pts_fwd, struct array* h_fwd, int* rev_clear, int** rev_fwd_clear) {
-  assert(rev_clear);
-  assert(rev_fwd_clear);
-  assert(pts_rev);
+int get_C_eff_samples_sap(struct array* pts_fwd, struct array* pts_rev, double* h_rev, struct matrix* M, int N_fwd, int N_rev, double* C_eff_samples) {
   assert(pts_fwd);
-  assert(h_fwd);
+  assert(pts_rev);
+  assert(h_rev);
+  assert(M);
+  assert(C_eff_samples);
   
-  int N = trace_length(pts_rev);
-  struct array* temp_samples = create_array(N);
+  double temp_samples[N_fwd];
+  // pre-calculate multiplier
+  const double constant_mult = (8.0 * pi * pi) * (1.0e27 / 6.022e23);
 
-  int N_count = 0;
-  for(int i=0; i<N; i++) {
-    if(rev_clear[i]) {
-      struct frame* x = get_frame(pts_rev,i);
-      double p = get_kde_probability_sa(x, pts_fwd, h_fwd, rev_fwd_clear[i]);
-      if(p != -1) {
-	double v = norm(get_frame_euler_vector(x));
-	double w = 1.0;
-	if(v != 0.0) {
-	  double sqrt_w = sin(v/2)/(v/2);
-	  w = sqrt_w*sqrt_w; // more efficient than pow()
-	}
-	double C_eff = p/(w/(8.0*pi*pi))/(6.022e23/1.0e27);
-	double den = (w/(8.0*pi*pi))/(6.022e23/1.0e27);
-	array_set(temp_samples,N_count,C_eff);
-	N_count++;
+  int count = 0;
+  for(int i=0; i<N_fwd; i++) {
+    double p = get_kde_probability_sap_flat(i, pts_fwd, pts_rev, h_rev, M, N_rev);
+    if(p != -1) {
+      double v = norm_euler_flat(i, pts_fwd);
+      double w = 1.0;
+      if(v != 0.0) {
+        double sqrt_w = sin(v/2)/(v/2);
+        w = sqrt_w*sqrt_w; // more efficient than pow()
       }
+      double C_eff = (p / w) * constant_mult;
+      temp_samples[count] = C_eff;
+      count++;
     }
   }
-  if(N_count == 0) {
-    printf("Error. No values in C_eff_samples.\n");
-    exit(1);
+  
+  for(int i=0; i<count; i++) {
+    C_eff_samples[i] = temp_samples[i];
   }
-  // fill the final array
-  struct array* C_eff_samples = create_array(N_count);
-  for(int i=0; i<N_count; i++) {
-    array_set(C_eff_samples,i,array_get(temp_samples,i));
-  }
-  free_array(temp_samples);
-  return C_eff_samples;
+  return count;
 }
 
-struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples) {
+struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* rna_lib, int N_samples, double* C_eff_stats) {
   assert(steps);
-  assert(bb_lib);
-  assert(bp_lib);
+  assert(rna_lib);
+  assert(rna_lib->bb);
+  assert(rna_lib->bp);
   int length = steptypes_length(steps);
   int halfway = length/2; // should be floored b/c ints
+  int d = 6;
 
-  //printf("length=%d, halfway=%d: [%d:%d] [%d:%d]\n",length,halfway,0,halfway-1,halfway,length-1);
-  struct steptypes* steps_fwd = steptypes_splice(steps,0,halfway-1);
-  struct trace* pts_fwd =  get_pts_forward(steps_fwd,bb_lib,bp_lib,N_samples);
+  // forward points
+  struct steptypes* fwd_steps = steptypes_splice(steps,0,halfway-1);
+  struct array* fwd_pts = create_array(N_samples * d);
+  for(int i=0; i<N_samples; i++) {
+    struct trace* fwd_trace = get_random_forward_trace(fwd_steps,rna_lib);
+    struct frame* x_fwd = get_frame(fwd_trace,-1); // get the last point in the trace
+    add_frame_euler_vector(x_fwd);
+    for(int j=0; j<6; j++) {
+      fwd_pts->data[i*d + j] = get_T6_value(x_fwd,j);
+    }
+    free_trace(fwd_trace);
+  }
+
+  // reverse points
+  struct steptypes* rev_steps = steptypes_splice(steps,halfway,length-1);
+  struct array* rev_pts = create_array(N_samples * d);
+  for(int i=0; i<N_samples; i++) {
+    struct trace* rev_trace = get_random_reverse_trace(rev_steps,rna_lib);
+    struct frame* x_rev = get_frame(rev_trace,-1); // get the last point in the trace
+    add_frame_euler_vector(x_rev);
+    for(int j=0; j<d; j++) {
+      rev_pts->data[i*d + j] = get_T6_value(x_rev,j);
+    }
+    free_trace(rev_trace);
+  }
+
+  double dist_sq_mean = get_avg_dist_sq(fwd_pts,rev_pts,N_samples);
+  double theta_sq_mean = get_avg_angle_sq(fwd_pts,rev_pts,N_samples);
   
-  struct steptypes* steps_rev = steptypes_splice(steps,halfway,length-1);
-  struct trace* pts_rev = get_pts_reverse(steps_rev,bb_lib,bp_lib,N_samples);
+  // calculate and store bandwidths for KDE calculations
+  double h_fwd[d];
+  get_kde_bandwidth_flat(fwd_pts,N_samples,h_fwd);
+  double h_rev[d];
+  get_kde_bandwidth_flat(rev_pts,N_samples,h_rev);
+
+  double C_eff_fwd_samples[N_samples];
+  get_C_eff_samples(fwd_pts,rev_pts,h_rev,N_samples,C_eff_fwd_samples);
+  double C_eff_rev_samples[N_samples];
+  get_C_eff_samples(rev_pts,fwd_pts,h_fwd,N_samples,C_eff_rev_samples);
   
-  struct array* h_fwd = get_kde_bandwidth(pts_fwd);
-  struct array* h_rev = get_kde_bandwidth(pts_rev);
-  
-  struct array* C_eff_fwd_samples = get_C_eff_samples(pts_rev,pts_fwd,h_fwd);
-  struct array* C_eff_rev_samples = get_C_eff_samples(pts_fwd,pts_rev,h_rev);
-  
-  double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples);
-  double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples);
-  double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(array_size(C_eff_fwd_samples));
-  double C_eff_rev_mean = get_sample_mean(C_eff_rev_samples);
-  double C_eff_rev_std_dev = get_sample_std_dev(C_eff_rev_samples);
-  double C_eff_rev_error = C_eff_rev_std_dev / sqrt(array_size(C_eff_rev_samples));
+  double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples, N_samples);
+  double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples, N_samples);
+  double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(N_samples);
+  double C_eff_rev_mean = get_sample_mean(C_eff_rev_samples, N_samples);
+  double C_eff_rev_std_dev = get_sample_std_dev(C_eff_rev_samples, N_samples);
+  double C_eff_rev_error = C_eff_rev_std_dev / sqrt(N_samples);
   
   // statistical error
   double C_eff_fwd_relerr = C_eff_fwd_error / C_eff_fwd_mean;
@@ -1122,34 +1495,209 @@ struct array* get_C_eff_both_dir(struct steptypes* steps, struct library* bb_lib
   double C_eff_diff = 0.5 * fabs(log(C_eff_fwd_mean/C_eff_rev_mean));
 
   // geometric mean of the fwd and rev arithmetic means:
-  double C_eff = get_geometric_mean(C_eff_fwd_mean,C_eff_rev_mean);
+  double C_eff_mean = get_geometric_mean(C_eff_fwd_mean,C_eff_rev_mean);
   // compute relative error as a Euclidian distance of statistical and systematic error "dimensions"
   double C_eff_relerr = sqrt(C_eff_fwd_relerr*C_eff_fwd_relerr + C_eff_rev_relerr*C_eff_rev_relerr + C_eff_diff*C_eff_diff);
   // compute error by scaling unitless relative error by the mean
-  double C_eff_error = C_eff_relerr * C_eff;
+  double C_eff_error = C_eff_relerr * C_eff_mean;
 
   // set data to be returned 
-  struct array* C_eff_stats = create_array(2);
-  array_set(C_eff_stats,0,C_eff);
-  array_set(C_eff_stats,1,C_eff_error);
+  C_eff_stats[0] = C_eff_mean;
+  C_eff_stats[1] = C_eff_error;
+  C_eff_stats[2] = dist_sq_mean;
+  C_eff_stats[3] = theta_sq_mean;
 
   // memory managment
-  free_steptypes(steps_fwd);
-  free_steptypes(steps_rev);
-  free_trace(pts_fwd);
-  free_trace(pts_rev);
-  free_array(h_fwd);
-  free_array(h_rev);
-  free_array(C_eff_fwd_samples);
-  free_array(C_eff_rev_samples);
-  
-  return C_eff_stats;
+  free_steptypes(fwd_steps);
+  free_steptypes(rev_steps);
+  free_array(fwd_pts);
+  free_array(rev_pts);
 }
 
-void fprint_loop_trace(FILE* OUT, struct steptypes* fwd_steps, struct trace* fwd_trace, struct trace* fwd_helices, struct steptypes* rev_steps, struct trace* rev_trace, struct trace* rev_helices, double p_circ) {
-  struct steptypes* steps = steptypes_concat(fwd_steps,rev_steps);
-  fprint_steptypes(OUT,steps);
+struct array* get_C_eff_both_dir_sap(struct motif* motif, struct steptypes* steps, struct library* rna_lib, int N_samples, double bin_size, double d_min, struct library* helix_lib, char* sap_report, double* C_eff_stats) {
+  //print_steptypes(steps);
+  int length = steptypes_length(steps);
+  int halfway = length/2; // should be floored b/c ints
+  int d = 6;
+  
+  // forward traces
+  struct steptypes* fwd_steps = steptypes_splice(steps,0,halfway-1);
+  struct array* fwd_pts = create_array(N_samples * d);
 
+  // collision detection
+  struct trace** fwd_trace = malloc(N_samples * sizeof(struct trace*));
+  struct trace** fwd_helix = malloc(N_samples * sizeof(struct trace*));
+  struct detector** fwd_detector = malloc(N_samples * sizeof(struct detector*));
+  int fwd_collide = 0;
+  int N_fwd_pre = 0;
+  
+  for(int i=0; i<N_samples; i++) {
+    int fwd_clear = 1;
+    struct trace* trace =  get_random_forward_trace(fwd_steps,rna_lib);
+    struct trace* helix = build_forward_helix(fwd_steps,trace,rna_lib,helix_lib);
+    struct detector* detector = build_detector_with_helix(trace,helix,bin_size);      
+    if(self_collision_helix(detector,trace,helix,d_min)) {
+      fwd_clear = 0;
+      fwd_collide++;
+    }
+    if(fwd_clear) {
+      fwd_trace[N_fwd_pre] = trace;
+      fwd_helix[N_fwd_pre] = helix;
+      fwd_detector[N_fwd_pre] = detector;
+      struct frame* x_fwd = get_frame(trace,-1); // get the last point in the trace
+      add_frame_euler_vector(x_fwd);
+      for(int j=0; j<d; j++) {
+        fwd_pts->data[N_fwd_pre * d + j] = get_T6_value(x_fwd,j);
+      }
+      N_fwd_pre++;
+    } else {
+      free_trace(trace);
+      free_trace(helix);
+      free_detector(detector);
+    }
+  }
+  
+  // reverse traces 
+  struct steptypes* rev_steps = steptypes_splice(steps,halfway,length-1);
+  struct trace** rev_trace = malloc(N_samples * sizeof(struct trace*));
+  struct trace** rev_helix = malloc(N_samples * sizeof(struct trace*));
+  struct array* rev_pts = create_array(N_samples * d);
+  
+  // collision detection
+  struct detector** rev_detector = malloc(N_samples * sizeof(struct detector*));
+  int rev_collide = 0;
+  int N_rev_pre = 0;
+  for(int i=0; i<N_samples; i++) {
+    struct trace* trace = get_random_reverse_trace(rev_steps,rna_lib);
+    struct trace* helix = build_reverse_helix(rev_steps,trace,rna_lib,helix_lib);
+    struct detector* detector = build_detector_with_helix(trace,helix,bin_size);
+    int rev_clear = 1;
+    if(self_collision_helix(detector,trace,helix,d_min)) {
+      rev_clear = 0;
+      rev_collide++;
+    }
+    if(rev_clear) {
+      // only storing if no collision
+      rev_trace[N_rev_pre] = trace;
+      rev_helix[N_rev_pre] = helix;
+      rev_detector[N_rev_pre] = detector;
+      struct frame* x_rev = get_frame(trace,-1); // get the last point in the trace
+      add_frame_euler_vector(x_rev);
+      for(int j=0; j<d; j++) {
+        rev_pts->data[N_rev_pre * d + j] = get_T6_value(x_rev,j);
+      }
+      N_rev_pre++;
+    } else {
+      free_trace(trace);
+      free_trace(helix);
+      free_detector(detector);
+    }
+  }
+  
+  // check if the pair avoids each other
+  struct matrix* M = initialize_matrix(N_fwd_pre,N_rev_pre);
+  int count = 0;
+  int total = 0;
+  for(int i=0; i<N_fwd_pre; i++) {
+    for(int j=0; j<N_rev_pre; j++) {
+      total++; // total examined i,j pairs 
+      if(trace_collision_helix(fwd_detector[i],rev_trace[j],rev_helix[j],d_min)) {
+        // if the rev_trace/helix collides with fwd_trace/helix
+        set_element(M,i,j,0);
+        count++;
+      } 
+    }
+  }      
+  //printf("Completed collision matrix %d\n",omp_get_thread_num());
+  
+  // print to collisions file
+  FILE* SAP_REPORT = fopen(sap_report,"a");
+  double p = ((double)count)/total;
+  fprint_motif(SAP_REPORT,motif,'\t');
+  fprint_steptypes(SAP_REPORT,steps);
+  fprintf(SAP_REPORT,"\t%.2e\t%d\t%d\t%d\t%d\t%d\n",p,count,total,fwd_collide,rev_collide,N_samples);
+  fclose(SAP_REPORT);
+
+  double dist_sq_mean = get_avg_dist_sq_sap(fwd_pts,rev_pts,M,N_fwd_pre,N_rev_pre);
+  double theta_sq_mean = get_avg_angle_sq_sap(fwd_pts,rev_pts,M,N_fwd_pre,N_rev_pre);
+
+  // calculate and store bandwidths for KDE calculations
+  // bandwidth calc includes collisions -- could remove them
+  double h_fwd[d];
+  get_kde_bandwidth_flat(fwd_pts,N_fwd_pre,h_fwd);
+  double h_rev[d];
+  get_kde_bandwidth_flat(rev_pts,N_rev_pre,h_rev);
+  //printf("Completed bandwidth %d\n",omp_get_thread_num());
+  
+  // compute C_eff samples here
+  double C_eff_fwd_samples[N_fwd_pre];
+  int N_fwd = get_C_eff_samples_sap(fwd_pts,rev_pts,h_rev,M,N_fwd_pre,N_rev_pre,C_eff_fwd_samples);
+  transpose_matrix(M); // transpose matrix to access flipped below
+  // for reverse case, all values must be flipped in association:
+  double C_eff_rev_samples[N_rev_pre];
+  int N_rev = get_C_eff_samples_sap(rev_pts,fwd_pts,h_fwd,M,N_rev_pre,N_fwd_pre,C_eff_rev_samples);
+  //printf("samples complete %d\n",omp_get_thread_num());
+  
+  double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples, N_fwd);
+  double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples,N_fwd);
+  double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(N_fwd);
+  double C_eff_rev_mean = get_sample_mean(C_eff_rev_samples, N_rev);
+  double C_eff_rev_std_dev = get_sample_std_dev(C_eff_rev_samples, N_rev);
+  double C_eff_rev_error = C_eff_rev_std_dev / sqrt(N_rev);
+  
+  // statistical error
+  double C_eff_fwd_relerr = C_eff_fwd_error / C_eff_fwd_mean;
+  double C_eff_rev_relerr = C_eff_rev_error / C_eff_rev_mean;
+  // systematic error
+  double C_eff_diff = 0.5 * fabs(log(C_eff_fwd_mean/C_eff_rev_mean));
+  
+  // geometric mean of the fwd and rev arithmetic means:
+  double C_eff_mean = get_geometric_mean(C_eff_fwd_mean,C_eff_rev_mean);
+  // compute relative error as a Euclidian distance of statistical and systematic error "dimensions"
+  double C_eff_relerr = sqrt(C_eff_fwd_relerr*C_eff_fwd_relerr + C_eff_rev_relerr*C_eff_rev_relerr + C_eff_diff*C_eff_diff);
+  // compute error by scaling unitless relative error by the mean
+  double C_eff_error = C_eff_relerr * C_eff_mean;
+  
+  // set data to be returned 
+  C_eff_stats[0] = C_eff_mean;
+  C_eff_stats[1] = C_eff_error;
+  C_eff_stats[2] = dist_sq_mean;
+  C_eff_stats[3] = theta_sq_mean;
+  
+  // memory managment
+  // fwd detectors and traces:
+  for(int i=0; i<N_fwd_pre; i++) {
+    free_detector(fwd_detector[i]);
+    free_trace(fwd_trace[i]);
+    free_trace(fwd_helix[i]);
+  }
+  free(fwd_detector);
+  free(fwd_trace);
+  free(fwd_helix);
+  // rev detectors and traces:
+  for(int j=0; j<N_rev_pre; j++) {
+    free_detector(rev_detector[j]);
+    free_trace(rev_trace[j]);
+    free_trace(rev_helix[j]);
+  }
+  free(rev_detector);
+  free(rev_trace);
+  free(rev_helix);
+  // free custom collision matrix
+  delete_matrix(M);
+  //  free the other stuff:
+  free_steptypes(fwd_steps);
+  free_steptypes(rev_steps);
+  free_array(fwd_pts);
+  free_array(rev_pts);
+}
+
+void fprint_loop_trace(FILE* OUT, int *idx, struct motif* motif, struct steptypes* fwd_steps, struct trace* fwd_trace, struct trace* fwd_helix, struct steptypes* rev_steps, struct trace* rev_trace, struct trace* rev_helix, double p_circ) {
+  struct steptypes* steps = steptypes_concat(fwd_steps,rev_steps);
+  // labels
+  fprintf(OUT,"%d\t",*idx);
+  fprint_motif(OUT,motif,'\t');
+  fprint_steptypes(OUT,steps);
   // forward trace
   fprintf(OUT,"\t%.2e\t[",p_circ);
   for(int i=0; i<steptypes_length(fwd_steps); i++) {
@@ -1180,242 +1728,259 @@ void fprint_loop_trace(FILE* OUT, struct steptypes* fwd_steps, struct trace* fwd
   }
   fprintf(OUT,"],");
 
-  // fwd helices
+  // fwd helix
   fprintf(OUT,"[");
-  for(int i=0; i<trace_length(fwd_helices)-2; i+=3) {
-    struct frame* x1 = get_frame(fwd_helices,i);
+  for(int i=0; i<trace_length(fwd_helix)-2; i+=3) {
+    struct frame* x1 = get_frame(fwd_helix,i);
     double* x1_ctr = get_frame_center(x1);
-    struct frame* x2 = get_frame(fwd_helices,i+1);
+    struct frame* x2 = get_frame(fwd_helix,i+1);
     double* x2_ctr = get_frame_center(x2);
-    struct frame* x3 = get_frame(fwd_helices,i+2);
+    struct frame* x3 = get_frame(fwd_helix,i+2);
     double* x3_ctr = get_frame_center(x3);
     fprintf(OUT,"((%.2f,%.2f,%.2f),(%.2f,%.2f,%.2f),\"%s\"),",x1_ctr[0],x1_ctr[1],x1_ctr[2],x2_ctr[0],x2_ctr[1],x2_ctr[2],"BP");
     fprintf(OUT,"((%.2f,%.2f,%.2f),\"%s\")",x3_ctr[0],x3_ctr[1],x3_ctr[2],"PA");
-    if(i<trace_length(fwd_helices)-3) {
+    if(i<trace_length(fwd_helix)-3) {
       fprintf(OUT,",");
     }
   }
   fprintf(OUT,"],");
 
-  // rev helices
+  // rev helix
   fprintf(OUT,"[");
-  for(int i=0; i<trace_length(rev_helices); i+=3) {
-    struct frame* x1 = get_frame(rev_helices,i);
+  for(int i=0; i<trace_length(rev_helix); i+=3) {
+    struct frame* x1 = get_frame(rev_helix,i);
     double* x1_ctr = get_frame_center(x1);
-    struct frame* x2 = get_frame(rev_helices,i+1);
+    struct frame* x2 = get_frame(rev_helix,i+1);
     double* x2_ctr = get_frame_center(x2);
-    struct frame* x3 = get_frame(rev_helices,i+2);
+    struct frame* x3 = get_frame(rev_helix,i+2);
     double* x3_ctr = get_frame_center(x3);
     fprintf(OUT,"((%.2f,%.2f,%.2f),(%.2f,%.2f,%.2f),\"%s\"),",x1_ctr[0],x1_ctr[1],x1_ctr[2],x2_ctr[0],x2_ctr[1],x2_ctr[2],"BP");
     fprintf(OUT,"((%.2f,%.2f,%.2f),\"%s\")",x3_ctr[0],x3_ctr[1],x3_ctr[2],"PA");
-    if(i<trace_length(rev_helices)-3) {
+    if(i<trace_length(rev_helix)-3) {
       fprintf(OUT,",");
     }
   }
   fprintf(OUT,"]\n");
 }
 
-struct array* get_C_eff_both_dir_sa(struct motif* motif, struct steptypes* steps, struct library* bb_lib, struct library* bp_lib, int N_samples, double bin_size, double d_min, struct library* helix_bb_lib, struct library* helix_bp_lib, char* sa_report) {
-  //int bin_size = 5;
-  //double d_min = 3;
+void print_loop_traces(FILE* OUT, int *idx, struct motif* motif, struct steptypes* steps, struct library* rna_lib, int N_samples, struct library* helix_lib, double p_circ_min) {
+  //print_steptypes(steps);
   int length = steptypes_length(steps);
   int halfway = length/2; // should be floored b/c ints
+  int d = 6;
   
-  // forward traces                                                                          |||
-  struct steptypes* fwd_steps = steptypes_splice(steps,0,halfway-1); // rev traces etc below VVV
-  struct trace* pts_fwd = create_trace(N_samples); // create the library to store the points
+  // forward traces
+  struct steptypes* fwd_steps = steptypes_splice(steps,0,halfway-1);
+  struct array* fwd_pts = create_array(N_samples * d);
   struct trace** fwd_trace = malloc(N_samples * sizeof(struct trace*));
-  struct trace** fwd_helices = malloc(N_samples * sizeof(struct trace*));
-  struct detector** fwd_detector = malloc(N_samples * sizeof(struct detector*));
-  int* fwd_clear = malloc(N_samples * sizeof(int));
-  int fwd_collide = 0;
+  struct trace** fwd_helix = malloc(N_samples * sizeof(struct trace*));
+  
+  // forward points
   for(int i=0; i<N_samples; i++) {
-    fwd_trace[i] =  get_random_forward_trace(fwd_steps,bb_lib,bp_lib);
-    if(helix_bp_lib) {
-      fwd_helices[i] = build_ideal_forward_helices(fwd_steps,fwd_trace[i],helix_bb_lib,helix_bp_lib);
-    } else {
-      fwd_helices[i] = build_random_forward_helices(fwd_steps,fwd_trace[i],bb_lib,bp_lib);
+    int fwd_clear = 1;
+    struct trace* trace =  get_random_forward_trace(fwd_steps,rna_lib);
+    struct trace* helix = build_forward_helix(fwd_steps,trace,rna_lib,helix_lib);
+    struct frame* x_fwd = get_frame(trace,-1); // get the last point in the trace
+    add_frame_euler_vector(x_fwd);
+    for(int j=0; j<d; j++) {
+      fwd_pts->data[i * d + j] = get_T6_value(x_fwd,j);
     }
-    fwd_detector[i] = build_detector_with_helices(fwd_trace[i],fwd_helices[i],bin_size);
-    fwd_clear[i] = 1;
-    if(self_collision(fwd_detector[i],fwd_trace[i],0,d_min)) {
-      fwd_clear[i] = 0;
-      fwd_collide++;
-    } else if(self_collision(fwd_detector[i],fwd_helices[i],trace_length(fwd_trace[i]),d_min)) {
-      fwd_clear[i] = 0;
-      fwd_collide++;
-    }
-    // either way, let's grab the last point to have all N_samples points
-    struct frame* x_fwd = copy_frame(get_frame(fwd_trace[i],-1)); // get the last point in the trace
-    double* EV = compute_euler_vector(get_frame_orientation(x_fwd));
-    set_frame_euler_vector(x_fwd,EV);
-    free_vector(EV);
-    set_frame(pts_fwd,i,x_fwd);
+    fwd_trace[i] = trace;
+    fwd_helix[i] = helix;
   }
-
+  
   // reverse traces 
   struct steptypes* rev_steps = steptypes_splice(steps,halfway,length-1);
-  struct trace* pts_rev = create_trace(N_samples); // create the library to store the points
   struct trace** rev_trace = malloc(N_samples * sizeof(struct trace*));
-  struct trace** rev_helices = malloc(N_samples * sizeof(struct trace*));
-  struct detector** rev_detector = malloc(N_samples * sizeof(struct detector*));
-  int* rev_clear = malloc(N_samples * sizeof(int));
-  int rev_collide = 0;
+  struct trace** rev_helix = malloc(N_samples * sizeof(struct trace*));
+  struct array* rev_pts = create_array(N_samples * d);
+
+  // reverse points 
   for(int i=0; i<N_samples; i++) {
-    rev_trace[i] =  get_random_reverse_trace(rev_steps,bb_lib,bp_lib);
-    if(helix_bp_lib) {
-      rev_helices[i] = build_ideal_reverse_helices(rev_steps,rev_trace[i],helix_bb_lib,helix_bp_lib);
+    struct trace* trace = get_random_reverse_trace(rev_steps,rna_lib);
+    struct trace* helix = build_reverse_helix(rev_steps,trace,rna_lib,helix_lib);
+    struct frame* x_rev = get_frame(trace,-1); // get the last point in the trace
+    add_frame_euler_vector(x_rev);
+    for(int j=0; j<d; j++) {
+      rev_pts->data[i * d + j] = get_T6_value(x_rev,j);
+    }
+    rev_trace[i] = trace;
+    rev_helix[i] = helix;
+  }
+  
+  // calculate and store bandwidths for KDE calculations
+  // bandwidth calc includes collisions -- could remove them
+  double h_fwd[d];
+  get_kde_bandwidth_flat(fwd_pts,N_samples,h_fwd);
+  double h_rev[d];
+  get_kde_bandwidth_flat(rev_pts,N_samples,h_rev);
+  
+  for(int idx1=0; idx1<N_samples; idx1++) {
+    for(int idx2=0; idx2<N_samples; idx2++) {
+      double p_circ = get_circ_prob_flat(fwd_pts,idx1,rev_pts,idx2,h_rev);
+      if(p_circ >= p_circ_min) {
+        fprint_loop_trace(OUT,idx,motif,fwd_steps,fwd_trace[idx1],fwd_helix[idx1],rev_steps,rev_trace[idx2],rev_helix[idx2],p_circ);
+        (*idx)++;
+      }
+    }
+  }
+ 
+  // memory managment
+  for(int i=0; i<N_samples; i++) {
+    free_trace(fwd_trace[i]);
+    free_trace(fwd_helix[i]);
+  }
+  free(fwd_trace);
+  free(fwd_helix);
+  // rev detectors and traces:
+  for(int j=0; j<N_samples; j++) {
+    free_trace(rev_trace[j]);
+    free_trace(rev_helix[j]);
+  }
+  free(rev_trace);
+  free(rev_helix);
+  //  free the other stuff:
+  free_steptypes(fwd_steps);
+  free_steptypes(rev_steps);
+  free_array(fwd_pts);
+  free_array(rev_pts);
+}
+
+void print_loop_traces_sap(FILE* OUT, int *idx, struct motif* motif, struct steptypes* steps, struct library* rna_lib, int N_samples, double bin_size, double d_min, struct library* helix_lib, char* sap_report, double p_circ_min) {
+  //print_steptypes(steps);
+  int length = steptypes_length(steps);
+  int halfway = length/2; // should be floored b/c ints
+  int d = 6;
+  
+  // forward traces
+  struct steptypes* fwd_steps = steptypes_splice(steps,0,halfway-1);
+  struct array* fwd_pts = create_array(N_samples * d);
+
+  // collision detection
+  struct trace** fwd_trace = malloc(N_samples * sizeof(struct trace*));
+  struct trace** fwd_helix = malloc(N_samples * sizeof(struct trace*));
+  struct detector** fwd_detector = malloc(N_samples * sizeof(struct detector*));
+  int fwd_collide = 0;
+  int N_fwd_pre = 0;
+  
+  for(int i=0; i<N_samples; i++) {
+    int fwd_clear = 1;
+    struct trace* trace =  get_random_forward_trace(fwd_steps,rna_lib);
+    struct trace* helix = build_forward_helix(fwd_steps,trace,rna_lib,helix_lib);
+    struct detector* detector = build_detector_with_helix(trace,helix,bin_size);      
+    if(self_collision_helix(detector,trace,helix,d_min)) {
+      fwd_clear = 0;
+      fwd_collide++;
+    }
+    if(fwd_clear) {
+      fwd_trace[N_fwd_pre] = trace;
+      fwd_helix[N_fwd_pre] = helix;
+      fwd_detector[N_fwd_pre] = detector;
+      struct frame* x_fwd = get_frame(trace,-1); // get the last point in the trace
+      add_frame_euler_vector(x_fwd);
+      for(int j=0; j<d; j++) {
+        fwd_pts->data[N_fwd_pre * d + j] = get_T6_value(x_fwd,j);
+      }
+      N_fwd_pre++;
     } else {
-      rev_helices[i] = build_random_reverse_helices(rev_steps,rev_trace[i],bb_lib,bp_lib);
+      free_trace(trace);
+      free_trace(helix);
+      free_detector(detector);
     }
-    rev_detector[i] = build_detector_with_helices(rev_trace[i],rev_helices[i],bin_size);
-    rev_clear[i] = 1;
-    if(self_collision(rev_detector[i],rev_trace[i],0,d_min)) {
-      rev_clear[i] = 0;
+  }
+  
+  // reverse traces 
+  struct steptypes* rev_steps = steptypes_splice(steps,halfway,length-1);
+  struct trace** rev_trace = malloc(N_samples * sizeof(struct trace*));
+  struct trace** rev_helix = malloc(N_samples * sizeof(struct trace*));
+  struct array* rev_pts = create_array(N_samples * d);
+  
+  // collision detection
+  struct detector** rev_detector = malloc(N_samples * sizeof(struct detector*));
+  int rev_collide = 0;
+  int N_rev_pre = 0;
+  for(int i=0; i<N_samples; i++) {
+    struct trace* trace = get_random_reverse_trace(rev_steps,rna_lib);
+    struct trace* helix = build_reverse_helix(rev_steps,trace,rna_lib,helix_lib);
+    struct detector* detector = build_detector_with_helix(trace,helix,bin_size);
+    int rev_clear = 1;
+    if(self_collision_helix(detector,trace,helix,d_min)) {
+      rev_clear = 0;
       rev_collide++;
-    } else if(self_collision(rev_detector[i],rev_helices[i],trace_length(rev_trace[i]),d_min)) {
-      rev_clear[i] = 0;
-      rev_collide++;      
     }
-    // either way, let's grab the last point to have all N_samples points
-    struct frame* x_rev = copy_frame(get_frame(rev_trace[i],-1)); // get the last point in the trace
-    double* EV = compute_euler_vector(get_frame_orientation(x_rev));
-    set_frame_euler_vector(x_rev,EV); // sets the values so can be freed after
-    free_vector(EV);
-    set_frame(pts_rev,i,x_rev);
+    if(rev_clear) {
+      // only storing if no collision
+      rev_trace[N_rev_pre] = trace;
+      rev_helix[N_rev_pre] = helix;
+      rev_detector[N_rev_pre] = detector;
+      struct frame* x_rev = get_frame(trace,-1); // get the last point in the trace
+      add_frame_euler_vector(x_rev);
+      for(int j=0; j<d; j++) {
+        rev_pts->data[N_rev_pre * d + j] = get_T6_value(x_rev,j);
+      }
+      N_rev_pre++;
+    } else {
+      free_trace(trace);
+      free_trace(helix);
+      free_detector(detector);
+    }
   }
   
   // check if the pair avoids each other
-  int **fwd_rev_clear = malloc(N_samples * sizeof(int*));
-  int **rev_fwd_clear = malloc(N_samples * sizeof(int*));
-  for(int i=0; i<N_samples; i++) {
-    fwd_rev_clear[i] = malloc(N_samples * sizeof(int));
-    rev_fwd_clear[i] = malloc(N_samples * sizeof(int));
-  }
-  int count = 0;
-  int total = 0;
-  for(int i=0; i<N_samples; i++) {
-    for(int j=0; j<N_samples; j++) {
-      // initialize to 1 = no collisions/clear
-      fwd_rev_clear[i][j] = 1;
-      rev_fwd_clear[j][i] = 1;
-      //printf("checking pair %d,%d\n",i,j);
-      if((fwd_clear[i])&&(rev_clear[j])) {	
-	total++; // total examined i,j pairs 
-	if(trace_collision(fwd_detector[i],rev_trace[j],d_min)) {
-	  // if the rev_trace collides with fwd_trace/helices
-	  fwd_rev_clear[i][j] = 0;
-	  rev_fwd_clear[j][i] = 0;
-	  count++;
-	} else if(trace_collision(fwd_detector[i],rev_helices[j],d_min)) {
-	  // if the rev_helices collide with fwd_trace/helices
-	  fwd_rev_clear[i][j] = 0;
-	  rev_fwd_clear[j][i] = 0;
-	  count++;
-	} 
-      } else {
-	fwd_rev_clear[i][j] = 0;
-	rev_fwd_clear[j][i] = 0;
-      }
-    }      
-  }
-
-  // print to collisions file
-  FILE* SA_REPORT = fopen(sa_report,"a");
-  double p = ((double)count)/total;
-  fprint_motif(SA_REPORT,motif,'\t');
-  fprint_steptypes(SA_REPORT,steps);
-  fprintf(SA_REPORT,"\t%.2e\t%d\t%d\t%d\t%d\t%d\n",p,count,total,fwd_collide,rev_collide,N_samples);
-  fclose(SA_REPORT);
-  
-  // bandwidth calc includes collisions -- could remove them
-  struct array* h_fwd = get_kde_bandwidth(pts_fwd);
-  struct array* h_rev = get_kde_bandwidth(pts_rev);  
-
-  /*
-  FILE* SA_LOOPS = fopen("sa_loops.txt","a");
-  for(int i=0; i<N_samples; i++) {
-    for(int j=0; j<N_samples; j++) {
-      if(fwd_rev_clear[i][j]) {
-	struct frame* x_fwd = get_frame(pts_fwd,i);
-	struct frame* x_rev = get_frame(pts_rev,j);
-	double prob = get_circ_prob(x_fwd,x_rev,h_fwd);
-	if(prob >= 1e-4) {
-	  fprint_motif(SA_LOOPS,motif,'\t');
-	  fprint_loop_trace(SA_LOOPS,fwd_steps,fwd_trace[i],fwd_helices[i],rev_steps,rev_trace[j],rev_helices[j],prob);
-	}
+  struct matrix* M = initialize_matrix(N_fwd_pre,N_rev_pre);
+  for(int i=0; i<N_fwd_pre; i++) {
+    for(int j=0; j<N_rev_pre; j++) {
+      if(trace_collision_helix(fwd_detector[i],rev_trace[j],rev_helix[j],d_min)) {
+        // if the rev_trace/helix collides with fwd_trace/helix
+        set_element(M,i,j,0);
       }
     }
   }
-  fclose(SA_LOOPS);
-  */
-  
-  struct array* C_eff_fwd_samples = get_C_eff_samples_sa(pts_rev,pts_fwd,h_fwd,rev_clear,rev_fwd_clear);
-  struct array* C_eff_rev_samples = get_C_eff_samples_sa(pts_fwd,pts_rev,h_rev,fwd_clear,fwd_rev_clear);
-  
-  double C_eff_fwd_mean = get_sample_mean(C_eff_fwd_samples);
-  double C_eff_fwd_std_dev = get_sample_std_dev(C_eff_fwd_samples);
-  double C_eff_fwd_error = C_eff_fwd_std_dev / sqrt(array_size(C_eff_fwd_samples));
-  double C_eff_rev_mean = get_sample_mean(C_eff_rev_samples);
-  double C_eff_rev_std_dev = get_sample_std_dev(C_eff_rev_samples);
-  double C_eff_rev_error = C_eff_rev_std_dev / sqrt(array_size(C_eff_rev_samples));
-  
-  // statistical error
-  double C_eff_fwd_relerr = C_eff_fwd_error / C_eff_fwd_mean;
-  double C_eff_rev_relerr = C_eff_rev_error / C_eff_rev_mean;
-  // systematic error
-  double C_eff_diff = 0.5 * fabs(log(C_eff_fwd_mean/C_eff_rev_mean));
-  
-  // geometric mean of the fwd and rev arithmetic means:
-  double C_eff = get_geometric_mean(C_eff_fwd_mean,C_eff_rev_mean);
-  // compute relative error as a Euclidian distance of statistical and systematic error "dimensions"
-  double C_eff_relerr = sqrt(C_eff_fwd_relerr*C_eff_fwd_relerr + C_eff_rev_relerr*C_eff_rev_relerr + C_eff_diff*C_eff_diff);
-  // compute error by scaling unitless relative error by the mean
-  double C_eff_error = C_eff_relerr * C_eff;
-  
-  // set data to be returned 
-  struct array* C_eff_stats = create_array(2);
-  array_set(C_eff_stats,0,C_eff);
-  array_set(C_eff_stats,1,C_eff_error);
+
+  // calculate and store bandwidths for KDE calculations
+  // bandwidth calc includes collisions -- could remove them
+  double h_fwd[d];
+  get_kde_bandwidth_flat(fwd_pts,N_fwd_pre,h_fwd);
+  double h_rev[d];
+  get_kde_bandwidth_flat(rev_pts,N_fwd_pre,h_rev);
+
+  for(int id1=0; id1<N_fwd_pre; id1++) {
+    for(int id2=0; id2<N_rev_pre; id2++) {
+      if(get_element(M,id1,id2)) {
+        double p_circ = get_circ_prob_flat(fwd_pts,id1,rev_pts,id2,h_rev);
+        if(p_circ >= p_circ_min) {
+          fprint_loop_trace(OUT,idx,motif,fwd_steps,fwd_trace[id1],fwd_helix[id1],rev_steps,rev_trace[id2],rev_helix[id2],p_circ);
+          (*idx)++;
+        }
+      }
+    }
+  }
   
   // memory managment
   // fwd detectors and traces:
-  for(int i=0; i<N_samples; i++) {
+  for(int i=0; i<N_fwd_pre; i++) {
     free_detector(fwd_detector[i]);
     free_trace(fwd_trace[i]);
-    free_trace(fwd_helices[i]);
+    free_trace(fwd_helix[i]);
   }
   free(fwd_detector);
   free(fwd_trace);
-  free(fwd_helices);
+  free(fwd_helix);
   // rev detectors and traces:
-  for(int j=0; j<N_samples; j++) {
+  for(int j=0; j<N_rev_pre; j++) {
     free_detector(rev_detector[j]);
     free_trace(rev_trace[j]);
-    free_trace(rev_helices[j]);
+    free_trace(rev_helix[j]);
   }
   free(rev_detector);
   free(rev_trace);
-  free(rev_helices);
-  // boolean "clear" matrices
-  for(int i=0; i<N_samples; i++) {
-    free(fwd_rev_clear[i]);
-    free(rev_fwd_clear[i]);
-  }
-  free(fwd_rev_clear);
-  free(rev_fwd_clear);
-  free(fwd_clear);
-  free(rev_clear);
-  //  freee the other stuff:
+  free(rev_helix);
+  // free custom collision matrix
+  delete_matrix(M);
+  //  free the other stuff:
   free_steptypes(fwd_steps);
   free_steptypes(rev_steps);
-  free_trace(pts_fwd);
-  free_trace(pts_rev);
-  free_array(h_fwd);
-  free_array(h_rev);
-  free_array(C_eff_fwd_samples);
-  free_array(C_eff_rev_samples);
-  
-  return C_eff_stats;
+  free_array(fwd_pts);
+  free_array(rev_pts);
 }
 

@@ -42,6 +42,7 @@ double* matvec_product(double** A, double* x);
 double** matmat_product(double** A, double** B);
 double** inverse(double** A);
 double** transpose(double** A);
+double trace(double** A);
 void print_matrix(double** A);
 
 // angle methods 
@@ -51,6 +52,5 @@ double get_angle(double *v, double* w);
 double argument(double x, double y);
 double* compute_euler_angles(double** R);
 double* compute_euler_vector(double** R);
-double* compute_euler_vector2(double** R);
 
 #endif

@@ -1,0 +1,40 @@
+import numpy as np
+import sys
+
+def read_results_file(results_file):
+    F = open(results_file)
+    kB = 1.987204259e-3
+    T = 310.15
+    for line in F:
+        if not line.startswith('motif'):
+            line = line.replace(',','\t')
+            label,C_eff,C_eff_err = line.split('\t')
+            C_eff = float(C_eff)
+            if C_eff > 0.0:
+                deltaG = -kB * T * np.log(C_eff);
+                n = count(label)
+                L = length(label)
+                print(label,n,L,deltaG)
+
+def count(label):
+    return len(label.split('-'))
+
+########
+# MAIN #
+########
+
+usage = "Usage: " + sys.argv[0] + " <C_eff_results.txt>"
+    
+if len(sys.argv) != 2:
+    print(usage)
+    exit(0)
+        
+results_file = sys.argv[1]
+
+kB = 1.987204259e-3
+T = 310.15
+max_n = 0
+data = {}
+avg_all = {}
+
+read_results_file(results_file)

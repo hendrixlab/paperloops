@@ -21,13 +21,61 @@
  * data structures for the transform and for the library of transforms
  */
 
-struct list;
-struct hash_node;
-struct hash_table;
-struct motif;
-struct motif_group;
-struct motif_library;
-struct steptypes;
+/*
+ * data structures for the motifs and combinatorics
+ */
+
+// this is just a dynamic array of int values, used to store primes and divisors for various tasks
+struct list {
+  long int* data;
+  int len;
+  int cap;
+};
+
+// node for linked list to avoid hash table collisions
+struct hash_node {
+  long int key;
+  void* value;
+  struct hash_node* next;
+};
+
+// a hash table structure to store motifs
+struct hash_table {
+  struct hash_node** array;
+  int size;
+  int total;
+};
+
+// this defines a single loop motif
+struct motif {
+  int* loop;
+  int num;
+  long int id; // a unique ID for each loop motif
+  struct motif* next;
+};
+
+// this is a group of loop motifs, used for recursively building libraries
+struct motif_group {
+  struct motif** data; // array of pointers to motifs
+  int count; // current number of motifs
+  int size; // should have a defined size/capacity >= count
+  int N; // number of loops in motif group
+  int L; // total length of all loops in each motif
+};
+
+// this is the final output, a library of all motif types
+struct motif_library {
+  struct motif_group** data;
+  int N_loops;
+  int L_max;
+};
+
+// this is a "steptype" motif, translated from loop motif
+// but is now a series of "BP" and "BB" transitions
+struct steptypes {
+  char** steps;
+  int length;
+};
 
 /*
  * Tools for building/adding/removing to a motif
@@ -84,19 +132,24 @@ struct motif* set_next_motif(struct motif* motif, struct motif* next);
  * Tools for building/adding/removing elements from motif_group
  */
 
+// motif_group - a list/collection of motifs
 struct motif_group* create_motif_group(int size);
 void free_motif_group(struct motif_group* motif_group);
 int get_motif_group_size(struct motif_group* motif_group);
 int get_motif_group_count(struct motif_group* motif_group);
 struct motif* get_motif(struct motif_group* motif_group, int idx);
+void set_motif(struct motif_group* motif_group, int idx, struct motif* motif);
 void add_motif(struct motif_group* motif_group, struct motif* m);
 void append_motif(struct motif_group* motif_group, struct motif* motif);
+
+// motif_hash - a hash table for keeping track of motifs
+struct hash_table** create_motif_hash(int N_loops, int L_max);
+void free_motif_hash(struct hash_table** motif_hash, int N_loops);
+
+// motif_lib - a library of motifs
 struct motif_group*** create_motif_lib(int N_loops, int L_max);
 void free_motif_lib(struct motif_group*** motif_lib, int N_loops, int L_max);
-struct hash_table** create_motif_list(int N_loops, int L_max);
-//void free_motif_list(struct motif_group** motif_list, int N_loops);
-void free_motif_list(struct hash_table** motif_list, int N_loops);
-struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N);
+struct motif_group*** build_motif_lib(int N_min, int N_max, int L_max, int** N);
 
 /***********************
  * Tools for Steptypes *
@@ -104,6 +157,7 @@ struct motif_group*** build_motif_lib(int N_loops, int L_max, int** N);
 
 struct steptypes* create_steptypes(int length);
 void free_steptypes(struct steptypes* steps);
+struct steptypes* clone_steptypes(struct steptypes* steps);
 struct steptypes* motif_to_steptypes(struct motif* motif);
 int motif_steptypes_length(struct motif* motif);
 int steptypes_length(struct steptypes* steptypes);

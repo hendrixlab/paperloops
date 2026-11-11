@@ -21,13 +21,39 @@
 
 /* STRUCTURES */
 
-struct frame;
+/**********************************************************
+ * Data structures for transforms and transform libraries *
+ **********************************************************/
 
-struct trace;
+struct frame {
+  double* ctr; // center of frame
+  double** M;  // Rotation matrix
+  double* EV;  // Euler vector
+  int num;
+};
 
-struct transform;
+struct trace {
+  struct frame** data;
+  int len;
+  int cap;
+};
 
-struct library;
+struct transform {
+  double* t; // translation
+  double** R; // rotation
+  char label[10];
+};
+
+struct transform_library {
+  struct transform** data;
+  int len;
+  int cap;
+};
+
+struct library {
+  struct transform_library* bb;
+  struct transform_library* bp;
+};
 
 /* FUNCTIONS */
 
@@ -38,10 +64,13 @@ struct frame* compute_frame(struct nuc* n);
 struct frame* reverse_frame(struct frame* f);
 struct frame* copy_frame(struct frame* f);
 struct frame* average_frames(struct frame* f1, struct frame* f2);
+double get_frame_distance_diff(struct frame* f1, struct frame* f2);
+double get_frame_angle_diff(struct frame* f1, struct frame* f2);
 double* get_frame_center(struct frame* f);
 void set_frame_center(struct frame* f, double* ctr);
 double** get_frame_orientation(struct frame* f);
 void set_frame_orientation(struct frame* f, double** M);
+void add_frame_euler_vector(struct frame* f);
 void set_frame_euler_vector(struct frame* f, double* EV);
 double* get_frame_euler_vector(struct frame* f);
 int get_frame_num(struct frame* f);
@@ -56,20 +85,22 @@ void free_trace(struct trace* trace);
 int trace_length(struct trace* trace);
 struct frame* get_frame(struct trace* trace, int idx);
 void set_frame(struct trace* trace, int idx, struct frame* f);
-void get_trace_min_bounds(struct trace* trace, double* min);
-void get_trace_max_bounds(struct trace* trace, double* max);
+double* get_trace_min_bounds(struct trace* trace, double* min);
+double* get_trace_max_bounds(struct trace* trace, double* max);
 
-// library tools 
+// transform_library tools
+struct transform_library* create_transform_library();
+void free_transform_library(struct transform_library* lib);
+int transform_library_size(struct transform_library* lib);
+void resize_transform_library(struct transform_library* lib);
+void remove_transform(struct transform_library* lib, int idx);
+struct transform* get_transform(struct transform_library* lib, int idx);
+struct transform* get_random_transform(struct transform_library* lib);
+void append_transform(struct transform_library* lib, struct transform* T);
+
+// combined library tools (with both bb and bp transform_library attached
 struct library* create_library();
 void free_library(struct library* lib);
-int library_size(struct library* lib);
-void resize_library(struct library* lib);
-void remove_transform(struct library* lib, int idx);
-struct transform* get_transform(struct library* lib, int idx);
-struct transform* get_random_transform(struct library* lib);
-void append_transform(struct library* lib, struct transform* T);
-double* get_library_min_bounds(struct library* lib);
-double* get_library_max_bounds(struct library* lib);
 
 // transform tools
 struct transform* create_transform(double val);
@@ -81,17 +112,12 @@ double** get_rotation_matrix(struct transform* T);
 void set_rotation_matrix(struct transform* T, double** R);
 struct transform* copy_transform(struct transform* T);
 struct transform* compute_transform(struct frame* f1, struct frame* f2);
-//void set_euler_vector(struct transform* T, double* EV);
-//double* get_euler_vector(struct transform* T);
-//double get_T6_value(struct transform* T, int i);
-//double* get_T6_std_dev(struct library* pts);
-//void print_transform_T6(struct transform* T);
 struct frame* apply_transform(struct transform* T, struct frame* x1);
 struct transform* reverse_transform(struct transform* T);
 
 // build libraries 
 int valid_dinucleotide(struct nuc* n1, struct nuc* n2);
-struct library* build_backbone_transform_library(struct rna_data* RNA);
-struct library* build_basepair_transform_library(struct rna_data* RNA, struct bp_array* bp_array);
+struct transform_library* build_backbone_transform_library(struct rna_data* RNA);
+struct transform_library* build_basepair_transform_library(struct rna_data* RNA, struct bp_array* bp_array);
 
 #endif

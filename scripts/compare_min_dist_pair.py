@@ -1,0 +1,68 @@
+import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import sys, os
+
+def length(label):
+    return sum([int(L) for L in label.split('-')])
+
+def count(label):
+    return len(label.split('-'))
+
+def read_results_file_list(results_file_list):
+    F = open(results_file_list)
+    data = {}
+    for line in F:
+        results_file = line.strip()
+        data = read_results_file(results_file,data)
+    return data
+
+def read_results_file(results_file,data):
+    F = open(results_file)
+    max_length = 0
+    kB = 1.987204259e-3
+    T = 310.15
+    for line in F:
+        label,C_eff,C_eff_err = line.split('\t')
+        if not np.isnan(float(C_eff)):
+            C_eff = float(C_eff)
+            deltaG = -kB * T * np.log(C_eff);
+            n = count(label)
+            data[label] = deltaG
+            L = length(label)
+            if L > max_length:
+                max_length = L
+    return data
+
+def f(x,m,b):
+    return x*m + b
+
+
+usage = "Usage: " + sys.argv[0] + " <combined results d_min=2.0> <combined results d_min=2.5>"
+
+if len(sys.argv) != 3:
+    print(usage)
+    exit(0)
+
+results_file1 = sys.argv[1]
+results_file2 = sys.argv[2]
+
+results1 = read_results_file_list(results_file1)
+results2 = read_results_file_list(results_file2)
+
+x_values = []
+y_values = []
+
+for label in results1:
+    if label in results2:
+        x_values.append(results1[label])
+        y_values.append(results2[label])
+
+plt.scatter(x_values,y_values,s=3,label='self-avoiding', alpha=0.5, color='k')
+
+plt.legend()
+plt.xlabel('$\Delta$G (kcal/mol), min dist 2.0A')
+plt.ylabel('$\Delta$G (kcal/mol), min dist 2.5A')
+
+plt.savefig("compare_min_dist_pair.pdf")
